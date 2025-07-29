@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "515765700078",
+    "project_id": "sugarinsights",
+    "storage_bucket": "sugarinsights.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:515765700078:android:47ae99e6edfe78cae23aff",
+        "android_client_info": {
+          "package_name": "com.ameetpandey.sugarinsights"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxm1d5YTTuGdGX1GT6SmCVBMvUXoFJl9g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
