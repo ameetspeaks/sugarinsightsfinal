@@ -304,7 +304,7 @@ class HealthDataProvider extends ChangeNotifier {
       Medication(
         name: 'Metformin',
         dosage: '500mg',
-        time: TimeOfDay(hour: 12, minute: 30),
+        times: [TimeOfDay(hour: 12, minute: 30)],
         isTaken: false,
         startDate: DateTime.now(),
         endDate: DateTime.now().add(const Duration(days: 30)),
@@ -314,7 +314,7 @@ class HealthDataProvider extends ChangeNotifier {
       Medication(
         name: 'Omega 3',
         dosage: '1000mg',
-        time: TimeOfDay(hour: 21, minute: 0),
+        times: [TimeOfDay(hour: 21, minute: 0)],
         isTaken: false,
         startDate: DateTime.now(),
         endDate: DateTime.now().add(const Duration(days: 30)),

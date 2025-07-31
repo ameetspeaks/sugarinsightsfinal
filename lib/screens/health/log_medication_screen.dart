@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/medication.dart';
-import '../../providers/health_data_provider.dart';
-import 'package:provider/provider.dart';
+import '../../services/medication_service.dart';
 
 class LogMedicationScreen extends StatefulWidget {
   final Medication? medication;
@@ -19,10 +19,13 @@ class LogMedicationScreen extends StatefulWidget {
 
 class _LogMedicationScreenState extends State<LogMedicationScreen> {
   final _formKey = GlobalKey<FormState>();
+  late MedicationService _medicationService;
+  bool _isLoading = false;
   
   // Controllers for all input fields
   final _medicationNameController = TextEditingController();
   final _dosageController = TextEditingController();
+  final _notesController = TextEditingController();
   
   String _selectedMedicineType = 'Tablet';
   String _selectedFrequency = 'Once daily';
@@ -69,14 +72,17 @@ class _LogMedicationScreenState extends State<LogMedicationScreen> {
   @override
   void initState() {
     super.initState();
+    _medicationService = MedicationService(Supabase.instance.client);
+    
     if (widget.medication != null) {
       _medicationNameController.text = widget.medication!.name;
       _dosageController.text = widget.medication!.dosage;
       _selectedMedicineType = widget.medication!.medicineType;
       _selectedFrequency = widget.medication!.frequency;
-      _selectedTime1 = widget.medication!.time;
+      _selectedTime1 = widget.medication!.times.isNotEmpty ? widget.medication!.times.first : TimeOfDay.now();
       _startDate = widget.medication!.startDate;
-      _endDate = widget.medication!.endDate;
+      _endDate = widget.medication!.endDate ?? DateTime.now().add(const Duration(days: 30));
+      _notesController.text = widget.medication!.notes ?? '';
     }
   }
 
@@ -84,6 +90,7 @@ class _LogMedicationScreenState extends State<LogMedicationScreen> {
   void dispose() {
     _medicationNameController.dispose();
     _dosageController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -98,531 +105,331 @@ class _LogMedicationScreenState extends State<LogMedicationScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Log Medication Reminders Details',
-          style: TextStyle(
+        title: Text(
+          widget.medication != null ? 'Edit Medication' : 'Add Medication',
+          style: const TextStyle(
             color: AppColors.primaryColor,
             fontWeight: FontWeight.bold,
-            fontSize: 18,
+            fontSize: 20,
           ),
         ),
         centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Medicine Name
-              _buildInputField(
-                label: 'Medicine Name',
-                controller: _medicationNameController,
-                placeholder: 'Generic and brand name if applicable',
-                icon: Icons.search,
-                suffixIcon: Icons.medication,
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Medicine Type
-              _buildDropdownField(
-                label: 'Medicine Type',
-                value: _selectedMedicineType,
-                items: _medicineTypes,
-                placeholder: 'Select Medicine type e.g. tablet, syrup',
-                onChanged: (String? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _selectedMedicineType = newValue;
-                    });
-                  }
-                },
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Medicine Dosage
-              _buildInputField(
-                label: 'Medicine Dosage',
-                controller: _dosageController,
-                placeholder: '(e.g., 500 mg, 1 tablet)',
-                icon: Icons.medication,
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Frequency
-              _buildDropdownField(
-                label: 'Frequency',
-                value: _selectedFrequency,
-                items: _frequencyOptions,
-                placeholder: 'How many times a day (e.g. twice daily)',
-                onChanged: (String? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _selectedFrequency = newValue;
-                    });
-                  }
-                },
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Start Date
-              Text(
-                'Start Date',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () => _selectDate(isStartDate: true),
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${_startDate.day}-${_startDate.month}-${_startDate.year}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.calendar_today,
-                        color: AppColors.primaryColor,
-                        size: 20,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              
-              // End Date
-              Text(
-                'End Date',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () => _selectDate(isStartDate: false),
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${_endDate.day}-${_endDate.month}-${_endDate.year}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.calendar_today,
-                        color: AppColors.primaryColor,
-                        size: 20,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Specific Times
-              Text(
-                'Specific Times',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 8),
-              
-              // Dynamic Time Fields
-              _buildDynamicTimeFields(),
-              
-              const SizedBox(height: 40),
-              
-              // Save Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _saveMedication,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDynamicTimeFields() {
-    if (_timeFieldCount == 1) {
-      return _buildTimeField(
-        label: 'Time',
-        time: _selectedTime1,
-        placeholder: 'Exact time',
-        onTap: () => _selectTime(1),
-      );
-    } else if (_timeFieldCount == 2) {
-      return Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 1',
-                  time: _selectedTime1,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(1),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 2',
-                  time: _selectedTime2,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(2),
-                ),
-              ),
-            ],
-          ),
-        ],
-      );
-    } else if (_timeFieldCount == 3) {
-      return Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 1',
-                  time: _selectedTime1,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(1),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 2',
-                  time: _selectedTime2,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(2),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildTimeField(
-            label: 'Time 3',
-            time: _selectedTime3,
-            placeholder: 'Exact time',
-            onTap: () => _selectTime(3),
-          ),
-        ],
-      );
-    } else if (_timeFieldCount == 4) {
-      return Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 1',
-                  time: _selectedTime1,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(1),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 2',
-                  time: _selectedTime2,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(2),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 3',
-                  time: _selectedTime3,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(3),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildTimeField(
-                  label: 'Time 4',
-                  time: _selectedTime4,
-                  placeholder: 'Exact time',
-                  onTap: () => _selectTime(4),
-                ),
-              ),
-            ],
-          ),
-        ],
-      );
-    }
-    
-    return const SizedBox.shrink();
-  }
-
-  Widget _buildInputField({
-    required String label,
-    required TextEditingController controller,
-    required String placeholder,
-    required IconData icon,
-    IconData? suffixIcon,
-    VoidCallback? onTap,
-    bool readOnly = false,
-    TextInputType? keyboardType,
-    List<TextInputFormatter>? inputFormatters,
-    String? Function(String?)? validator,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 8),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: TextField(
-                      controller: controller,
-                      readOnly: readOnly,
-                      keyboardType: keyboardType,
-                      inputFormatters: inputFormatters,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Colors.black,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: placeholder,
-                        hintStyle: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 16,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        icon,
-                        color: AppColors.primaryColor,
-                        size: 20,
-                      ),
-                      if (suffixIcon != null) ...[
-                        const SizedBox(width: 8),
-                        Icon(
-                          suffixIcon,
-                          color: AppColors.primaryColor,
-                          size: 20,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDropdownField({
-    required String label,
-    required String value,
-    required List<String> items,
-    required String placeholder,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          height: 56,
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[300]!),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              onChanged: onChanged,
-              items: items.map((String item) {
-                return DropdownMenuItem<String>(
-                  value: item,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      item,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-              icon: Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: Icon(
-                  Icons.keyboard_arrow_down,
+        actions: [
+          if (!_isLoading)
+            TextButton(
+              onPressed: _saveMedication,
+              child: const Text(
+                'Save',
+                style: TextStyle(
                   color: AppColors.primaryColor,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimeField({
-    required String label,
-    required TimeOfDay time,
-    required String placeholder,
-    required VoidCallback onTap,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 8),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      time.format(context),
-                      style: const TextStyle(
+        ],
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primaryColor,
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Medication Name
+                    const Text(
+                      'Medication Name',
+                      style: TextStyle(
                         fontSize: 16,
+                        fontWeight: FontWeight.bold,
                         color: Colors.black,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _medicationNameController,
+                      decoration: InputDecoration(
+                        hintText: 'Enter medication name',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter medication name';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Dosage
+                    const Text(
+                      'Dosage',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _dosageController,
+                      decoration: InputDecoration(
+                        hintText: 'e.g., 500mg, 1 tablet',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter dosage';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Medicine Type
+                    const Text(
+                      'Medicine Type',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedMedicineType,
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                      items: _medicineTypes.map((String type) {
+                        return DropdownMenuItem<String>(
+                          value: type,
+                          child: Text(type),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedMedicineType = newValue!;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Frequency
+                    const Text(
+                      'Frequency',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedFrequency,
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                      items: _frequencyOptions.map((String frequency) {
+                        return DropdownMenuItem<String>(
+                          value: frequency,
+                          child: Text(frequency),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _selectedFrequency = newValue!;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Time Selection
+                    const Text(
+                      'Time(s)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...List.generate(_timeFieldCount, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildTimeField(index + 1),
+                      );
+                    }),
+                    const SizedBox(height: 24),
+
+                    // Start Date
+                    const Text(
+                      'Start Date',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildDateField(
+                      date: _startDate,
+                      onTap: () => _selectDate(isStartDate: true),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // End Date
+                    const Text(
+                      'End Date (Optional)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildDateField(
+                      date: _endDate,
+                      onTap: () => _selectDate(isStartDate: false),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Notes
+                    const Text(
+                      'Notes (Optional)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _notesController,
+                      decoration: InputDecoration(
+                        hintText: 'Add any additional notes...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Save Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _saveMedication,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                widget.medication != null ? 'Update Medication' : 'Save Medication',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Icon(
-                    Icons.access_time,
-                    color: AppColors.primaryColor,
-                    size: 20,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+    );
+  }
+
+  Widget _buildTimeField(int timeNumber) {
+    TimeOfDay time;
+    switch (timeNumber) {
+      case 1:
+        time = _selectedTime1;
+        break;
+      case 2:
+        time = _selectedTime2;
+        break;
+      case 3:
+        time = _selectedTime3;
+        break;
+      case 4:
+        time = _selectedTime4;
+        break;
+      default:
+        time = _selectedTime1;
+    }
+
+    return GestureDetector(
+      onTap: () => _selectTime(timeNumber),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.grey[50],
         ),
-      ],
+        child: Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  time.format(context),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Icon(
+                Icons.access_time,
+                color: AppColors.primaryColor,
+                size: 20,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -669,6 +476,41 @@ class _LogMedicationScreenState extends State<LogMedicationScreen> {
     }
   }
 
+  Widget _buildDateField({
+    required DateTime date,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.grey[50],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${date.day}/${date.month}/${date.year}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.calendar_today,
+              color: AppColors.primaryColor,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _selectDate({required bool isStartDate}) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -692,30 +534,70 @@ class _LogMedicationScreenState extends State<LogMedicationScreen> {
     }
   }
 
-  void _saveMedication() {
-    if (_formKey.currentState!.validate()) {
+  Future<void> _saveMedication() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Build times list based on frequency
+      final List<TimeOfDay> times = [];
+      if (_timeFieldCount >= 1) times.add(_selectedTime1);
+      if (_timeFieldCount >= 2) times.add(_selectedTime2);
+      if (_timeFieldCount >= 3) times.add(_selectedTime3);
+      if (_timeFieldCount >= 4) times.add(_selectedTime4);
+
       final medication = Medication(
+        id: widget.medication?.id,
         name: _medicationNameController.text,
         dosage: _dosageController.text,
-        time: _selectedTime1,
+        times: times,
         isTaken: false,
         takenAt: null,
         startDate: _startDate,
         endDate: _endDate,
         medicineType: _selectedMedicineType,
         frequency: _selectedFrequency,
+        notes: _notesController.text.isEmpty ? null : _notesController.text,
+        isActive: true,
       );
 
-      context.read<HealthDataProvider>().addMedication(medication);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Medication logged successfully!'),
-          backgroundColor: AppColors.primaryColor,
-        ),
-      );
+      if (widget.medication != null) {
+        // Update existing medication
+        await _medicationService.updateMedication(medication);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Medication updated successfully!'),
+            backgroundColor: AppColors.primaryColor,
+          ),
+        );
+      } else {
+        // Create new medication
+        await _medicationService.createMedication(medication);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Medication added successfully!'),
+            backgroundColor: AppColors.primaryColor,
+          ),
+        );
+      }
 
       Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save medication: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 } 

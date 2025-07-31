@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/medication.dart';
+import '../../services/medication_service.dart';
 import 'log_medication_screen.dart';
 
 class MedicationDetailsScreen extends StatefulWidget {
@@ -16,6 +18,70 @@ class MedicationDetailsScreen extends StatefulWidget {
 }
 
 class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
+  late MedicationService _medicationService;
+  List<Map<String, dynamic>> _medicationHistory = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _medicationService = MedicationService(Supabase.instance.client);
+    _loadMedicationHistory();
+  }
+
+  Future<void> _loadMedicationHistory() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      // Load medication history for the last 30 days
+      final endDate = DateTime.now();
+      final startDate = endDate.subtract(const Duration(days: 30));
+      
+      final history = await _medicationService.getMedicationHistory(
+        widget.medication.id!,
+        startDate,
+        endDate,
+      );
+
+      setState(() {
+        _medicationHistory = history;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+      print('Error loading medication history: $e');
+    }
+  }
+
+  Future<void> _deleteMedication() async {
+    try {
+      await _medicationService.deleteMedication(widget.medication.id!);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Medication deleted successfully'),
+          backgroundColor: AppColors.primaryColor,
+        ),
+      );
+
+      Navigator.pop(context); // Close details screen
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete medication: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -40,7 +106,6 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
           IconButton(
             icon: const Icon(Icons.edit, color: AppColors.primaryColor),
             onPressed: () {
-              // TODO: Navigate to edit mode
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -50,6 +115,11 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.black),
+            onPressed: _loadMedicationHistory,
+            tooltip: 'Refresh',
           ),
         ],
       ),
@@ -115,11 +185,21 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  _buildInfoRow('Schedule', 'Daily at ${widget.medication.time.format(context)}'),
+                  _buildInfoRow('Schedule', 'Daily at ${_formatMedicationTimes(widget.medication)}'),
                   const SizedBox(height: 12),
-                  _buildInfoRow('Start Date', '15 Mar 2024'),
+                  _buildInfoRow('Medicine Type', widget.medication.medicineType),
                   const SizedBox(height: 12),
-                  _buildInfoRow('End Date', '15 Apr 2024'),
+                  _buildInfoRow('Frequency', widget.medication.frequency),
+                  const SizedBox(height: 12),
+                  _buildInfoRow('Start Date', _formatDate(widget.medication.startDate)),
+                  const SizedBox(height: 12),
+                  _buildInfoRow('End Date', widget.medication.endDate != null 
+                      ? _formatDate(widget.medication.endDate!) 
+                      : 'Ongoing'),
+                  if (widget.medication.notes != null && widget.medication.notes!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildInfoRow('Notes', widget.medication.notes!),
+                  ],
                 ],
               ),
             ),
@@ -127,26 +207,80 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
             const SizedBox(height: 24),
 
             // Medication History
-            const Text(
-              'History',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+            Row(
+              children: [
+                const Text(
+                  'History',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                if (_isLoading)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryColor,
+                      strokeWidth: 2,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: 5, // Sample history items
-              itemBuilder: (context, index) {
-                return _buildHistoryItem(
-                  date: '${15 - index} Mar 2024',
-                  time: '09:00 AM',
-                  status: index % 2 == 0 ? 'Taken' : 'Skipped',
-                );
-              },
-            ),
+            
+            if (_error != null)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red[600]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Error loading history: $_error',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (_medicationHistory.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'No history available for this medication',
+                  style: TextStyle(color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _medicationHistory.length,
+                itemBuilder: (context, index) {
+                  final historyItem = _medicationHistory[index];
+                  return _buildHistoryItem(
+                    date: _formatDate(DateTime.parse(historyItem['scheduled_for'])),
+                    time: _formatTime(DateTime.parse(historyItem['scheduled_for'])),
+                    status: historyItem['status'] ?? 'pending',
+                    takenAt: historyItem['taken_at'] != null 
+                        ? DateTime.parse(historyItem['taken_at'])
+                        : null,
+                  );
+                },
+              ),
 
             const SizedBox(height: 24),
 
@@ -154,37 +288,15 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // TODO: Mark as completed
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Mark as Completed',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                  child: Container(), // Empty container to maintain layout
                 ),
-                const SizedBox(width: 12),
                 IconButton(
                   onPressed: () {
-                    // TODO: Show delete confirmation
                     showDialog(
                       context: context,
                       builder: (context) => AlertDialog(
                         title: const Text('Delete Medication'),
-                        content: const Text('Are you sure you want to delete this medication?'),
+                        content: const Text('Are you sure you want to delete this medication? This action cannot be undone.'),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context),
@@ -192,9 +304,8 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
                           ),
                           TextButton(
                             onPressed: () {
-                              // TODO: Delete medication
                               Navigator.pop(context); // Close dialog
-                              Navigator.pop(context); // Close details screen
+                              _deleteMedication();
                             },
                             child: const Text(
                               'Delete',
@@ -244,8 +355,10 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
     required String date,
     required String time,
     required String status,
+    DateTime? takenAt,
   }) {
-    final isCompleted = status == 'Taken';
+    final isCompleted = status == 'taken';
+    final isSkipped = status == 'skipped';
     
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -263,12 +376,22 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
             decoration: BoxDecoration(
               color: isCompleted
                   ? AppColors.primaryColor.withOpacity(0.1)
-                  : Colors.grey[100],
+                  : isSkipped
+                      ? Colors.orange.withOpacity(0.1)
+                      : Colors.grey[100],
               shape: BoxShape.circle,
             ),
             child: Icon(
-              isCompleted ? Icons.check : Icons.close,
-              color: isCompleted ? AppColors.primaryColor : Colors.grey,
+              isCompleted 
+                  ? Icons.check 
+                  : isSkipped 
+                      ? Icons.close 
+                      : Icons.schedule,
+              color: isCompleted 
+                  ? AppColors.primaryColor 
+                  : isSkipped 
+                      ? Colors.orange 
+                      : Colors.grey,
               size: 20,
             ),
           ),
@@ -292,6 +415,16 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
                     color: Colors.grey[600],
                   ),
                 ),
+                if (takenAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Taken at ${_formatTime(takenAt)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -300,14 +433,20 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
             decoration: BoxDecoration(
               color: isCompleted
                   ? AppColors.primaryColor.withOpacity(0.1)
-                  : Colors.grey[100],
+                  : isSkipped
+                      ? Colors.orange.withOpacity(0.1)
+                      : Colors.grey[100],
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              status,
+              status.toUpperCase(),
               style: TextStyle(
-                fontSize: 14,
-                color: isCompleted ? AppColors.primaryColor : Colors.grey[600],
+                fontSize: 12,
+                color: isCompleted 
+                    ? AppColors.primaryColor 
+                    : isSkipped 
+                        ? Colors.orange 
+                        : Colors.grey[600],
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -315,5 +454,40 @@ class _MedicationDetailsScreenState extends State<MedicationDetailsScreen> {
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day} ${_getMonthName(date.month)} ${date.year}';
+  }
+
+  String _formatTime(DateTime date) {
+    final hour = date.hour;
+    final minute = date.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : hour == 0 ? 12 : hour;
+    return '${displayHour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return months[month - 1];
+  }
+
+  String _formatMedicationTimes(Medication medication) {
+    if (medication.safeTimes.isEmpty) {
+      return 'No specific times';
+    }
+    return medication.safeTimes.map((time) => _formatTimeOfDay(time)).join(', ');
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hour;
+    final minute = time.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : hour == 0 ? 12 : hour;
+    return '${displayHour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
   }
 } 

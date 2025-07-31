@@ -56,11 +56,27 @@ class EducationCategoryCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: Icon(
-                    category.icon,
-                    color: Colors.white,
-                    size: 28,
-                  ),
+                  child: category.iconName != null
+                      ? ClipOval(
+                          child: Image.asset(
+                            category.iconName!,
+                            width: 30,
+                            height: 30,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.category,
+                                color: Colors.white,
+                                size: 28,
+                              );
+                            },
+                          ),
+                        )
+                      : Icon(
+                          category.icon ?? Icons.category,
+                          color: Colors.white,
+                          size: 28,
+                        ),
                 ),
                 const SizedBox(width: 16),
                 // Category Content

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/enums/dashboard_enums.dart';
-import '../../widgets/dashboard/bottom_nav_bar.dart';
-import '../../widgets/education/education_category_card.dart';
 import '../../models/education_category.dart';
-import 'medical_nutrition_therapy_screen.dart';
+import '../../providers/education_provider.dart';
+import '../../widgets/common/error_view.dart';
+import '../../widgets/common/loading_view.dart';
+import 'category_detail_screen.dart';
 
 class EducationScreen extends StatefulWidget {
   const EducationScreen({super.key});
@@ -14,131 +15,42 @@ class EducationScreen extends StatefulWidget {
 }
 
 class _EducationScreenState extends State<EducationScreen> {
-  final _searchController = TextEditingController();
-
-
-  // Sample education categories data
-  final List<EducationCategory> _categories = [
-    EducationCategory(
-      id: '1',
-      name: 'Medical Nutrition Therapy',
-      icon: Icons.restaurant,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '2',
-      name: 'Physical Activity & Exercise',
-      icon: Icons.fitness_center,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '3',
-      name: 'Yoga & Diabetes',
-      icon: Icons.self_improvement,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '4',
-      name: 'Insulin Management Education',
-      icon: Icons.medication,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '5',
-      name: 'Weight Management',
-      icon: Icons.monitor_weight,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '6',
-      name: 'Good Sleep Habits',
-      icon: Icons.bedtime,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '7',
-      name: 'Diabetes Complications',
-      icon: Icons.medical_services,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '8',
-      name: 'Psychosocial Care',
-      icon: Icons.favorite,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '9',
-      name: 'Intermittent Fasting',
-      icon: Icons.schedule,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-    EducationCategory(
-      id: '10',
-      name: 'Blood Pressure Management',
-      icon: Icons.favorite_border,
-      articleCount: 14,
-      blogCount: 10,
-    ),
-  ];
-
+  final TextEditingController _searchController = TextEditingController();
   List<EducationCategory> _filteredCategories = [];
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _filteredCategories = _categories;
-  }
-
-  void _filterCategories(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredCategories = _categories;
-      } else {
-        _filteredCategories = _categories
-            .where((category) =>
-                category.name.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
     });
   }
 
-  void _showAddCategoryModal() {
-    // TODO: Implement add category modal
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Add New Category functionality coming soon!'),
-        backgroundColor: AppColors.primaryColor,
-      ),
-    );
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    
+    final provider = Provider.of<EducationProvider>(context, listen: false);
+    await provider.loadCategories();
+    
+    if (mounted) {
+      _filterCategories('');
+      setState(() {
+        _isInitialized = true;
+      });
+    }
   }
 
-  void _onCategoryTap(EducationCategory category) {
-    if (category.name == 'Medical Nutrition Therapy') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const MedicalNutritionTherapyScreen(),
-        ),
-      );
-    } else {
-      // TODO: Navigate to other category detail screens
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${category.name} feature coming soon!'),
-          backgroundColor: AppColors.primaryColor,
-        ),
-      );
-    }
+  void _filterCategories(String query) {
+    if (!mounted) return;
+    
+    final provider = Provider.of<EducationProvider>(context, listen: false);
+    setState(() {
+      _filteredCategories = provider.categories
+          .where((category) =>
+              category.name.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+    });
   }
 
   @override
@@ -155,106 +67,197 @@ class _EducationScreenState extends State<EducationScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'Education',
+          'Blog Category',
           style: TextStyle(
-            color: AppColors.primaryColor,
+            color: Colors.black,
             fontWeight: FontWeight.bold,
-            fontSize: 22,
+            fontSize: 20,
           ),
         ),
-      ),
-      body: Column(
-        children: [
-          // Title and Add Button
+        centerTitle: true,
+        actions: [
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Blog Category',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryColor,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _showAddCategoryModal,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text(
-                    'Add New',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Search Bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _filterCategories,
-              decoration: InputDecoration(
-                hintText: 'Search Patients Name/Unique Number',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
+            padding: const EdgeInsets.only(right: 16),
+            child: ElevatedButton(
+              onPressed: () {
+                // TODO: Implement add new category
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.grey[300]!,
-                  ),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.grey[300]!,
-                  ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text(
+                '+ Add New',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(
-                    color: AppColors.primaryColor,
-                    width: 2,
-                  ),
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
               ),
             ),
           ),
-
-          const SizedBox(height: 16),
-
-          // Categories List
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _filteredCategories.length,
-              itemBuilder: (context, index) {
-                final category = _filteredCategories[index];
-                final isEven = index % 2 == 0;
-                
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: EducationCategoryCard(
-                    category: category,
-                    backgroundColor: isEven ? Colors.white : Colors.grey[50]!,
-                    onTap: () => _onCategoryTap(category),
-                  ),
-                );
-              },
-            ),
-          ),
         ],
-             ),
-     );
+      ),
+      body: Consumer<EducationProvider>(
+        builder: (context, provider, child) {
+          if (!_isInitialized || provider.isLoading) {
+            return const LoadingView(message: 'Loading categories...');
+          }
+
+          if (provider.error != null) {
+            return ErrorView(
+              message: provider.error!,
+              onRetry: _loadData,
+            );
+          }
+
+          return Column(
+            children: [
+              // Search bar
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: _filterCategories,
+                  decoration: InputDecoration(
+                    hintText: 'Search Patients Name/Unique Number',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                  ),
+                ),
+              ),
+
+              // Categories list
+              Expanded(
+                child: _filteredCategories.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No categories found',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadData,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _filteredCategories.length,
+                          itemBuilder: (context, index) {
+                            final category = _filteredCategories[index];
+                            return _buildCategoryCard(category);
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
-} 
+
+  Widget _buildCategoryCard(EducationCategory category) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CategoryDetailScreen(category: category),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Category Icon
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: category.iconName != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(25),
+                        child: Image.asset(
+                          category.iconName!,
+                          width: 30,
+                          height: 30,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.category,
+                              color: AppColors.primaryColor,
+                              size: 24,
+                            );
+                          },
+                        ),
+                      )
+                    : Icon(
+                        Icons.category,
+                        color: AppColors.primaryColor,
+                        size: 24,
+                      ),
+              ),
+              
+              const SizedBox(width: 16),
+              
+              // Category Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      category.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      category.contentSummary,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Arrow icon
+              Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.grey[400],
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

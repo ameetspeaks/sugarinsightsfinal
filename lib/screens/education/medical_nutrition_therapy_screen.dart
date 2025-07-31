@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/video.dart';
 import 'blog_post_detail_screen.dart';
 import 'video_player_screen.dart';
 import 'article_view_screen.dart';
@@ -402,10 +403,15 @@ class _MedicalNutritionTherapyScreenState extends State<MedicalNutritionTherapyS
           context,
           MaterialPageRoute(
             builder: (context) => VideoPlayerScreen(
-              title: video['title'],
-              timestamp: video['timestamp'],
-              videoUrl: video['image'],
-              duration: video['duration'],
+              video: Video(
+                id: video['id'] ?? '',
+                categoryId: '',
+                title: video['title'],
+                videoUrl: video['image'],
+                duration: int.tryParse(video['duration'] ?? '0'),
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+              ),
             ),
           ),
         );

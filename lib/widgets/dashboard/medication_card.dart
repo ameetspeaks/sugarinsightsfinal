@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../screens/health/log_medication_screen.dart';
 
 class MedicationCard extends StatelessWidget {
   final String name;
@@ -19,7 +20,12 @@ class MedicationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.pushNamed(context, '/log-medication');
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LogMedicationScreen(),
+          ),
+        );
       },
       child: Container(
         padding: const EdgeInsets.all(16),

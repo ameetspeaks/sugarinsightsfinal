@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../../core/constants/app_colors.dart';
 import '../../models/food_entry.dart';
 
@@ -24,6 +25,47 @@ class FoodEntryCard extends StatelessWidget {
     return '$day-$month-$year $hour:$minute$period';
   }
 
+  Widget _buildImageWidget(String imagePath) {
+    // Check if it's a local file path
+    if (imagePath.startsWith('/') || imagePath.startsWith('file://')) {
+      return Image.file(
+        File(imagePath),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return _buildFallbackIcon();
+        },
+      );
+    }
+    
+    // Check if it's a network URL
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return Image.network(
+        imagePath,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return _buildFallbackIcon();
+        },
+      );
+    }
+    
+    // Try as asset (fallback)
+    return Image.asset(
+      imagePath,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return _buildFallbackIcon();
+      },
+    );
+  }
+
+  Widget _buildFallbackIcon() {
+    return Icon(
+      Icons.restaurant,
+      color: Colors.grey[600],
+      size: 30,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -44,11 +86,17 @@ class FoodEntryCard extends StatelessWidget {
             height: 60,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              image: DecorationImage(
-                image: AssetImage(entry.imageUrl ?? 'assets/images/food/placeholder.jpg'),
-                fit: BoxFit.cover,
-              ),
+              color: Colors.grey[200],
             ),
+            child: entry.imageUrl != null
+                ? ClipOval(
+                    child: _buildImageWidget(entry.imageUrl!),
+                  )
+                : Icon(
+                    Icons.restaurant,
+                    color: Colors.grey[600],
+                    size: 30,
+                  ),
           ),
           const SizedBox(width: 12),
           // Content

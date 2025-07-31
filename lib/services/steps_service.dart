@@ -66,7 +66,7 @@ class StepsService {
     }
   }
 
-  /// Get today's steps
+  /// Get today's steps (aggregated total)
   Future<Map<String, dynamic>?> getTodaySteps() async {
     try {
       if (_currentUserId == null) {
@@ -76,17 +76,28 @@ class StepsService {
       final today = DateTime.now();
       final response = await _supabase
           .from('steps_readings')
-          .select()
+          .select('steps_count')
           .eq('user_id', _currentUserId)
-          .eq('reading_date', today.toIso8601String().split('T')[0])
-          .single();
+          .eq('reading_date', today.toIso8601String().split('T')[0]);
 
-      return response;
-    } catch (e) {
-      if (e is PostgrestException && e.code == 'PGRST116') {
-        // No data found for today
+      if (response.isEmpty) {
         return null;
       }
+
+      // Convert all steps_count to integers first
+      final List<int> stepCounts = List<Map<String, dynamic>>.from(response)
+          .map((reading) => int.parse(reading['steps_count'].toString()))
+          .toList();
+
+      // Now sum up all steps
+      final totalSteps = stepCounts.fold<int>(0, (sum, steps) => sum + steps);
+      
+      return {
+        'steps_count': totalSteps,
+        'reading_date': today.toIso8601String().split('T')[0],
+        'user_id': _currentUserId,
+      };
+    } catch (e) {
       print('❌ Error getting today\'s steps: $e');
       rethrow;
     }
@@ -303,13 +314,44 @@ class StepsService {
       final end = endDate ?? DateTime.now();
 
       final response = await _supabase
-          .rpc('get_steps_statistics', params: {
-            'user_uuid': _currentUserId,
-            'start_date': start.toIso8601String().split('T')[0],
-            'end_date': end.toIso8601String().split('T')[0],
-          });
+          .from('steps_readings')
+          .select('steps_count, reading_date')
+          .eq('user_id', _currentUserId);
 
-      return response;
+      List<Map<String, dynamic>> readings = List<Map<String, dynamic>>.from(response);
+      
+      // Filter by date range
+      final startStr = start.toIso8601String().split('T')[0];
+      final endStr = end.toIso8601String().split('T')[0];
+      
+      readings = readings.where((reading) {
+        final readingDate = reading['reading_date'] as String;
+        return readingDate.compareTo(startStr) >= 0 && readingDate.compareTo(endStr) <= 0;
+      }).toList();
+      
+      if (readings.isEmpty) {
+        return {
+          'total_steps': 0,
+          'average_steps': 0.0,
+          'max_steps': 0,
+          'min_steps': 0,
+          'days_with_data': 0,
+        };
+      }
+
+             final totalSteps = readings.fold<int>(0, (sum, reading) => sum + (int.parse(reading['steps_count'].toString())));
+      final averageSteps = totalSteps / readings.length;
+             final maxSteps = readings.map((r) => int.parse(r['steps_count'].toString())).reduce((a, b) => a > b ? a : b);
+       final minSteps = readings.map((r) => int.parse(r['steps_count'].toString())).reduce((a, b) => a < b ? a : b);
+      final uniqueDates = readings.map((r) => r['reading_date']).toSet().length;
+
+      return {
+        'total_steps': totalSteps,
+        'average_steps': averageSteps,
+        'max_steps': maxSteps,
+        'min_steps': minSteps,
+        'days_with_data': uniqueDates,
+      };
     } catch (e) {
       print('❌ Error getting steps statistics: $e');
       rethrow;
@@ -324,12 +366,18 @@ class StepsService {
       }
 
       final response = await _supabase
-          .rpc('get_daily_steps', params: {
-            'user_uuid': _currentUserId,
-            'target_date': date.toIso8601String().split('T')[0],
-          });
+          .from('steps_readings')
+          .select('steps_count')
+          .eq('user_id', _currentUserId)
+          .eq('reading_date', date.toIso8601String().split('T')[0]);
 
-      return response;
+      // Convert all steps_count to integers first
+      final List<int> stepCounts = List<Map<String, dynamic>>.from(response)
+          .map((reading) => int.parse(reading['steps_count'].toString()))
+          .toList();
+
+      // Now sum up all steps
+      return stepCounts.fold<int>(0, (sum, steps) => sum + steps);
     } catch (e) {
       print('❌ Error getting daily steps: $e');
       rethrow;
@@ -346,12 +394,27 @@ class StepsService {
       final start = startDate ?? DateTime.now().subtract(const Duration(days: 6));
 
       final response = await _supabase
-          .rpc('get_weekly_steps', params: {
-            'user_uuid': _currentUserId,
-            'start_date': start.toIso8601String().split('T')[0],
-          });
+          .from('steps_readings')
+          .select('steps_count')
+          .eq('user_id', _currentUserId);
 
-      return response;
+      List<Map<String, dynamic>> readings = List<Map<String, dynamic>>.from(response);
+      
+      // Filter by date range and convert steps to integers
+      final startStr = start.toIso8601String().split('T')[0];
+      final endStr = DateTime.now().toIso8601String().split('T')[0];
+      
+      // Convert all steps_count to integers first and filter by date
+      final List<int> stepCounts = List<Map<String, dynamic>>.from(response)
+          .where((reading) {
+            final readingDate = reading['reading_date'] as String;
+            return readingDate.compareTo(startStr) >= 0 && readingDate.compareTo(endStr) <= 0;
+          })
+          .map((reading) => int.parse(reading['steps_count'].toString()))
+          .toList();
+
+      // Now sum up all steps
+      return stepCounts.fold<int>(0, (sum, steps) => sum + steps);
     } catch (e) {
       print('❌ Error getting weekly steps: $e');
       rethrow;
@@ -366,14 +429,31 @@ class StepsService {
       }
 
       final month = targetMonth ?? DateTime.now();
+      final startOfMonth = DateTime(month.year, month.month, 1);
+      final endOfMonth = DateTime(month.year, month.month + 1, 0);
 
       final response = await _supabase
-          .rpc('get_monthly_steps', params: {
-            'user_uuid': _currentUserId,
-            'target_month': DateTime(month.year, month.month, 1).toIso8601String().split('T')[0],
-          });
+          .from('steps_readings')
+          .select('steps_count')
+          .eq('user_id', _currentUserId);
 
-      return response;
+      List<Map<String, dynamic>> readings = List<Map<String, dynamic>>.from(response);
+      
+      // Filter by date range and convert steps to integers
+      final startStr = startOfMonth.toIso8601String().split('T')[0];
+      final endStr = endOfMonth.toIso8601String().split('T')[0];
+      
+      // Convert all steps_count to integers first and filter by date
+      final List<int> stepCounts = List<Map<String, dynamic>>.from(response)
+          .where((reading) {
+            final readingDate = reading['reading_date'] as String;
+            return readingDate.compareTo(startStr) >= 0 && readingDate.compareTo(endStr) <= 0;
+          })
+          .map((reading) => int.parse(reading['steps_count'].toString()))
+          .toList();
+
+      // Now sum up all steps
+      return stepCounts.fold<int>(0, (sum, steps) => sum + steps);
     } catch (e) {
       print('❌ Error getting monthly steps: $e');
       rethrow;
@@ -394,12 +474,15 @@ class StepsService {
         endDate: DateTime.now(),
       );
 
+      final todayStepsCount = int.parse((todaySteps?['steps_count'] ?? 0).toString());
+      final dailyGoal = int.parse((currentGoal?['daily_goal'] ?? 10000).toString());
+
       return {
-        'today_steps': todaySteps?['steps_count'] ?? 0,
-        'daily_goal': currentGoal?['daily_goal'] ?? 10000,
+        'today_steps': todayStepsCount,
+        'daily_goal': dailyGoal,
         'weekly_stats': weeklyStats,
-        'goal_achievement': todaySteps != null 
-            ? ((todaySteps['steps_count'] as int) / (currentGoal?['daily_goal'] ?? 10000) * 100).clamp(0, 100)
+        'goal_achievement': dailyGoal > 0 
+            ? ((todayStepsCount / dailyGoal) * 100).clamp(0, 100)
             : 0.0,
       };
     } catch (e) {
@@ -408,38 +491,144 @@ class StepsService {
     }
   }
 
-  /// Get weekly progress data for charts
-  Future<List<Map<String, dynamic>>> getWeeklyProgress() async {
+  /// Get progress data for charts based on selected period
+  Future<List<Map<String, dynamic>>> getWeeklyProgress({String period = 'This Week'}) async {
     try {
-      final startDate = DateTime.now().subtract(const Duration(days: 6));
+      final now = DateTime.now();
+      DateTime startDate;
+      
+      switch (period) {
+        case 'Today':
+          startDate = DateTime(now.year, now.month, now.day);
+          break;
+        case 'This Week':
+          startDate = now.subtract(Duration(days: now.weekday - 1));
+          break;
+        case 'This Month':
+          startDate = DateTime(now.year, now.month, 1);
+          break;
+        case 'This Year':
+          startDate = DateTime(now.year, 1, 1);
+          break;
+        default:
+          startDate = now.subtract(const Duration(days: 6));
+      }
+      
       final readings = await getStepsReadings(
         startDate: startDate,
-        endDate: DateTime.now(),
+        endDate: now,
       );
 
       // Group by date and sum steps
       final Map<String, int> dailySteps = {};
       for (final reading in readings) {
         final date = reading['reading_date'] as String;
-        final steps = reading['steps_count'] as int;
+        final steps = int.parse(reading['steps_count'].toString());
         dailySteps[date] = (dailySteps[date] ?? 0) + steps;
       }
 
-      // Create list for last 7 days
-      final List<Map<String, dynamic>> weeklyData = [];
-      for (int i = 6; i >= 0; i--) {
-        final date = DateTime.now().subtract(Duration(days: i));
-        final dateStr = date.toIso8601String().split('T')[0];
-        final steps = dailySteps[dateStr] ?? 0;
+      // Create list for the selected period with appropriate intervals
+      final List<Map<String, dynamic>> progressData = [];
+      final List<DateTime> intervals = [];
+      
+      // Generate intervals based on period
+      DateTime current = startDate;
+      switch (period) {
+        case 'Today':
+          // Divide day into 6 4-hour intervals
+          for (int hour = 0; hour < 24; hour += 4) {
+            // Only add intervals up to the current hour
+            if (hour <= now.hour) {
+              intervals.add(DateTime(now.year, now.month, now.day, hour));
+            }
+          }
+          break;
+          
+        case 'This Week':
+          while (!current.isAfter(now)) {
+            intervals.add(current);
+            current = current.add(const Duration(days: 1));
+          }
+          break;
+          
+        case 'This Month':
+          // Divide month into weeks
+          while (!current.isAfter(now)) {
+            intervals.add(current);
+            current = current.add(const Duration(days: 7));
+          }
+          if (current.subtract(const Duration(days: 7)).isBefore(now)) {
+            intervals.add(now);
+          }
+          break;
+          
+        case 'This Year':
+          // Use quarters (3 months intervals)
+          while (current.isBefore(DateTime(now.year + 1, 1, 1))) {
+            intervals.add(current);
+            current = DateTime(current.year, current.month + 3, 1);
+          }
+          break;
+          
+        default:
+          while (!current.isAfter(now)) {
+            intervals.add(current);
+            current = current.add(const Duration(days: 1));
+          }
+      }
 
-        weeklyData.add({
-          'date': dateStr,
-          'steps': steps,
-          'day_name': _getDayName(date.weekday),
+      // Create data points for each interval
+      for (int i = 0; i < intervals.length; i++) {
+        final currentInterval = intervals[i];
+        final nextInterval = i < intervals.length - 1 
+            ? intervals[i + 1] 
+                          : period == 'Today' 
+              ? (i < intervals.length - 1 
+                  ? intervals[i + 1] 
+                  : DateTime(now.year, now.month, now.day, now.hour + 1))
+              : now.add(const Duration(days: 1));
+
+        // Calculate total steps for this interval
+        int totalSteps = 0;
+        dailySteps.forEach((date, steps) {
+          final readingDate = DateTime.parse(date);
+          if (readingDate.isAfter(currentInterval.subtract(const Duration(seconds: 1))) && 
+              readingDate.isBefore(nextInterval)) {
+            totalSteps += steps;
+          }
+        });
+
+        String label;
+        switch (period) {
+          case 'Today':
+            final endHour = i < intervals.length - 1 
+                ? intervals[i + 1].hour
+                : now.hour;
+            label = '${currentInterval.hour.toString().padLeft(2, '0')}-${endHour.toString().padLeft(2, '0')}';
+            break;
+          case 'This Week':
+            label = _getDayName(currentInterval.weekday);
+            break;
+          case 'This Month':
+            final weekNum = ((currentInterval.day - 1) ~/ 7) + 1;
+            label = 'W$weekNum';
+            break;
+          case 'This Year':
+            final quarterNum = ((currentInterval.month - 1) ~/ 3) + 1;
+            label = 'Q$quarterNum';
+            break;
+          default:
+            label = _getDayName(currentInterval.weekday);
+        }
+
+        progressData.add({
+          'date': currentInterval.toIso8601String(),
+          'steps': totalSteps,
+          'label': label,
         });
       }
 
-      return weeklyData;
+      return progressData;
     } catch (e) {
       print('❌ Error getting weekly progress: $e');
       rethrow;
@@ -457,5 +646,13 @@ class StepsService {
       case 7: return 'Sun';
       default: return 'Mon';
     }
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return months[month - 1];
   }
 } 

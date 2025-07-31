@@ -28,25 +28,25 @@ class FoodEntry {
         'name': name,
         'description': description,
         'timestamp': timestamp.toIso8601String(),
-        'imageUrl': imageUrl,
-        'calories': calories, // Added to toJson
-        'carbs': carbs, // Added to toJson
-        'protein': protein, // Added to toJson
-        'fat': fat, // Added to toJson
-        'mealType': mealType, // Added to toJson
+        'image_url': imageUrl,
+        'calories': calories,
+        'carbs': carbs,
+        'protein': protein,
+        'fat': fat,
+        'meal_type': mealType,
       };
 
   factory FoodEntry.fromJson(Map<String, dynamic> json) => FoodEntry(
-        id: json['id'],
-        name: json['name'],
-        description: json['description'],
-        timestamp: DateTime.parse(json['timestamp']),
-        imageUrl: json['imageUrl'],
-        calories: json['calories'], // Added to fromJson
-        carbs: json['carbs'], // Added to fromJson
-        protein: json['protein'], // Added to fromJson
-        fat: json['fat'], // Added to fromJson
-        mealType: json['mealType'], // Added to fromJson
+        id: json['id']?.toString(),
+        name: json['name']?.toString() ?? '',
+        description: json['description']?.toString() ?? '',
+        timestamp: DateTime.parse(json['timestamp']?.toString() ?? DateTime.now().toIso8601String()),
+        imageUrl: json['image_url']?.toString() ?? json['imageUrl']?.toString(),
+        calories: (json['calories'] is int) ? json['calories'] : int.tryParse(json['calories']?.toString() ?? '0') ?? 0,
+        carbs: (json['carbs'] is double) ? json['carbs'] : double.tryParse(json['carbs']?.toString() ?? '0.0') ?? 0.0,
+        protein: (json['protein'] is double) ? json['protein'] : double.tryParse(json['protein']?.toString() ?? '0.0') ?? 0.0,
+        fat: (json['fat'] is double) ? json['fat'] : double.tryParse(json['fat']?.toString() ?? '0.0') ?? 0.0,
+        mealType: json['meal_type']?.toString() ?? json['mealType']?.toString() ?? 'Breakfast',
       );
 
   FoodEntry copyWith({

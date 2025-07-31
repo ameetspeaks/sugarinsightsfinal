@@ -12,6 +12,7 @@ import 'providers/app_state_provider.dart';
 import 'providers/health_data_provider.dart';
 import 'providers/navigation_provider.dart';
 import 'providers/settings_provider.dart';
+import 'providers/education_provider.dart';
 import 'screens/onboarding/basic_details_screen.dart';
 import 'screens/onboarding/height_weight_screen.dart';
 import 'screens/onboarding/diabetes_status_screen.dart';
@@ -77,6 +78,7 @@ void main() async {
         provider_package.ChangeNotifierProvider(create: (_) => HealthDataProvider()),
         provider_package.ChangeNotifierProvider(create: (_) => NavigationProvider()),
         provider_package.ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        provider_package.ChangeNotifierProvider(create: (_) => EducationProvider()),
       ],
       child: const MyApp(),
     ),
@@ -133,6 +135,7 @@ class MyApp extends StatelessWidget {
         '/diagnosis-timeline': (context) => const DiagnosisTimelineScreen(),
         '/unique-id': (context) => const UniqueIdScreen(),
         '/profile-details': (context) => const ProfileDetailsScreen(),
+        '/log-medication': (context) => const LogMedicationScreen(),
       },
     );
   }

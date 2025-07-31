@@ -100,20 +100,36 @@ class _LogStepsScreenState extends State<LogStepsScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Steps saved successfully!'),
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text('$stepsCount steps saved successfully!'),
+                ],
+              ),
               backgroundColor: AppColors.primaryColor,
+              duration: const Duration(seconds: 2),
             ),
           );
-          Navigator.pop(context);
+          Navigator.pop(context, true); // Return true to indicate data was updated
         }
       } catch (e) {
         print('❌ Error saving steps: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error saving steps: $e'),
+              content: Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Error saving steps: ${e.toString()}'),
+                  ),
+                ],
+              ),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
@@ -148,10 +164,10 @@ class _LogStepsScreenState extends State<LogStepsScreen> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -187,8 +203,43 @@ class _LogStepsScreenState extends State<LogStepsScreen> {
                   if (steps == null || steps <= 0) {
                     return 'Please enter a valid number of steps';
                   }
+                  if (steps > 100000) {
+                    return 'Steps count cannot exceed 100,000';
+                  }
                   return null;
                 },
+              ),
+              const SizedBox(height: 20),
+              _buildDropdownField(
+                label: 'Activity Type',
+                value: _selectedActivityType,
+                items: _activityTypes.map((type) => 
+                  DropdownMenuItem(value: type, child: Text(type.toUpperCase()))
+                ).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedActivityType = value;
+                    });
+                  }
+                },
+                icon: Icons.fitness_center,
+              ),
+              const SizedBox(height: 20),
+              _buildDropdownField(
+                label: 'Source',
+                value: _selectedSource,
+                items: _sourceTypes.map((type) => 
+                  DropdownMenuItem(value: type, child: Text(type.toUpperCase()))
+                ).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedSource = value;
+                    });
+                  }
+                },
+                icon: Icons.source,
               ),
               const SizedBox(height: 20),
               _buildInputField(
@@ -203,21 +254,38 @@ class _LogStepsScreenState extends State<LogStepsScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _saveSteps,
+                  onPressed: _isLoading ? null : _saveSteps,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryColor,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    disabledBackgroundColor: Colors.grey[300],
                   ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            SizedBox(width: 10),
+                            Text('Saving...'),
+                          ],
+                        )
+                      : const Text(
+                          'Save Steps',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -308,6 +376,73 @@ class _LogStepsScreenState extends State<LogStepsScreen> {
                 ],
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDropdownField({
+    required String label,
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+    required IconData icon,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey[200]!,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: AppColors.primaryColor,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DropdownButton<String>(
+                  value: value,
+                  items: items,
+                  onChanged: onChanged,
+                  underline: const SizedBox(),
+                  isExpanded: true,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.arrow_drop_down,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+            ],
           ),
         ),
       ],

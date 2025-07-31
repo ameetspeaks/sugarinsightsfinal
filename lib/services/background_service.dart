@@ -11,11 +11,18 @@ class BackgroundService {
   BackgroundService._internal();
 
   final NotificationService _notificationService = NotificationService();
-  final ReminderScheduler _reminderScheduler = ReminderScheduler();
+  late ReminderScheduler _reminderScheduler;
   late SharedPreferences _prefs;
 
   Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
+    // Initialize ReminderScheduler with required dependencies
+    // TODO: Create proper MedicationService instance when Supabase is integrated
+    // For now, we'll skip the ReminderScheduler initialization
+    // _reminderScheduler = ReminderScheduler(
+    //   medicationService,
+    //   _notificationService,
+    // );
     // Background service initialized - simplified version without background_fetch
     print('[BackgroundService] Initialized');
   }
@@ -30,7 +37,7 @@ class BackgroundService {
       final List<dynamic> medicationsList = json.decode(medicationsJson);
       final List<Medication> medications = medicationsList
           .map((json) => Medication.fromJson(json))
-          .where((med) => !med.isTaken && med.endDate.isAfter(DateTime.now()))
+          .where((med) => !med.isTaken && (med.endDate?.isAfter(DateTime.now()) ?? true))
           .toList();
 
       // Check each medication
@@ -58,8 +65,8 @@ class BackgroundService {
       now.year,
       now.month,
       now.day,
-      medication.time.hour,
-      medication.time.minute,
+      medication.times.isNotEmpty ? medication.times.first.hour : 9,
+      medication.times.isNotEmpty ? medication.times.first.minute : 0,
     );
 
     switch (medication.frequency.toLowerCase()) {

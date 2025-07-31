@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/food_entry.dart';
-import '../../providers/health_data_provider.dart';
-import 'package:provider/provider.dart';
+import '../../services/food_service.dart';
+import '../../widgets/diet/food_search_widget.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AddDietIntakeScreen extends StatefulWidget {
   const AddDietIntakeScreen({super.key});
@@ -73,12 +76,23 @@ class _AddDietIntakeScreenState extends State<AddDietIntakeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Food Input
+              // Food Search
+              FoodSearchWidget(
+                onFoodSelected: (foodItem) {
+                  setState(() {
+                    _foodNameController.text = foodItem['name'] ?? '';
+                    // You can also auto-fill nutrition values here
+                  });
+                },
+              ),
+              
+              const SizedBox(height: 24),
+              
+              // Food Name
               _buildInputField(
-                label: 'Food',
+                label: 'Food Name',
                 controller: _foodNameController,
                 placeholder: 'Enter food name',
-                icon: Icons.mic,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter food name';
@@ -293,13 +307,13 @@ class _AddDietIntakeScreenState extends State<AddDietIntakeScreen> {
                    
                    const SizedBox(height: 12),
                    
-                   // Update Button
+                   // Save Button
                    SizedBox(
                      width: double.infinity,
                      child: ElevatedButton(
-                       onPressed: _createDietEntry,
+                       onPressed: _isUploading ? null : _createDietEntry,
                        style: ElevatedButton.styleFrom(
-                         backgroundColor: Colors.orange,
+                         backgroundColor: AppColors.primaryColor,
                          foregroundColor: Colors.white,
                          padding: const EdgeInsets.symmetric(vertical: 16),
                          shape: RoundedRectangleBorder(
@@ -307,13 +321,35 @@ class _AddDietIntakeScreenState extends State<AddDietIntakeScreen> {
                          ),
                          elevation: 0,
                        ),
-                       child: const Text(
-                         'Update',
-                         style: TextStyle(
-                           fontSize: 16,
-                           fontWeight: FontWeight.w600,
-                         ),
-                       ),
+                       child: _isUploading
+                           ? const Row(
+                               mainAxisAlignment: MainAxisAlignment.center,
+                               children: [
+                                 SizedBox(
+                                   width: 20,
+                                   height: 20,
+                                   child: CircularProgressIndicator(
+                                     strokeWidth: 2,
+                                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                   ),
+                                 ),
+                                 SizedBox(width: 12),
+                                 Text(
+                                   'Saving...',
+                                   style: TextStyle(
+                                     fontSize: 16,
+                                     fontWeight: FontWeight.w600,
+                                   ),
+                                 ),
+                               ],
+                             )
+                           : const Text(
+                               'Save Food Entry',
+                               style: TextStyle(
+                                 fontSize: 16,
+                                 fontWeight: FontWeight.w600,
+                               ),
+                             ),
                      ),
                    ),
                  ],
@@ -488,58 +524,196 @@ class _AddDietIntakeScreenState extends State<AddDietIntakeScreen> {
   }
 
   Future<void> _uploadImage() async {
-    setState(() {
-      _isUploading = true;
-    });
+    // Show image source selection dialog
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select Image Source',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildImageSourceButton(
+                    icon: Icons.camera_alt,
+                    label: 'Camera',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _pickImage(ImageSource.camera);
+                    },
+                  ),
+                  _buildImageSourceButton(
+                    icon: Icons.photo_library,
+                    label: 'Gallery',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _pickImage(ImageSource.gallery);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
-    // Simulate image upload
-    await Future.delayed(const Duration(seconds: 2));
-    
-    setState(() {
-      _selectedImagePath = 'food_image_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      _isUploading = false;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Image uploaded successfully!'),
-        backgroundColor: AppColors.primaryColor,
+  Widget _buildImageSourceButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.primaryColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primaryColor),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 40,
+              color: AppColors.primaryColor,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primaryColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  void _createDietEntry() {
-    if (_formKey.currentState!.validate()) {
-      final foodEntry = FoodEntry(
-        name: _foodNameController.text,
-        description: _descriptionController.text,
-        timestamp: DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-          _selectedTime.hour,
-          _selectedTime.minute,
-        ),
-        imageUrl: _selectedImagePath,
-        calories: 0, // Will be calculated based on food
-        carbs: 0,
-        protein: 0,
-        fat: 0,
-        mealType: 'Custom',
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      setState(() {
+        _isUploading = true;
+      });
+
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
       );
 
-      // Save to provider
-      final healthDataProvider = Provider.of<HealthDataProvider>(context, listen: false);
-      healthDataProvider.addFoodEntry(foodEntry);
+      if (image != null) {
+        // For now, we'll simulate upload to Supabase Storage
+        // In a real app, you would upload the file to Supabase Storage
+        await Future.delayed(const Duration(seconds: 1));
+        
+        setState(() {
+          _selectedImagePath = image.path; // Store local path for now
+          _isUploading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image selected successfully!'),
+            backgroundColor: AppColors.primaryColor,
+          ),
+        );
+      } else {
+        setState(() {
+          _isUploading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isUploading = false;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Diet entry created successfully!'),
-          backgroundColor: AppColors.primaryColor,
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          backgroundColor: Colors.red,
         ),
       );
+    }
+  }
 
-      Navigator.pop(context);
+  Future<void> _createDietEntry() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isUploading = true;
+      });
+
+      try {
+        final foodService = FoodService(Supabase.instance.client);
+        
+        // Create food entry with basic nutrition values
+        // In a real app, you'd calculate these based on the food item
+        final foodEntry = FoodEntry(
+          name: _foodNameController.text,
+          description: _descriptionController.text,
+          timestamp: DateTime(
+            _selectedDate.year,
+            _selectedDate.month,
+            _selectedDate.day,
+            _selectedTime.hour,
+            _selectedTime.minute,
+          ),
+          imageUrl: _selectedImagePath,
+          calories: 200, // Default calories - should be calculated based on food
+          carbs: 25.0, // Default carbs
+          protein: 8.0, // Default protein
+          fat: 5.0, // Default fat
+          mealType: 'Breakfast', // Default meal type
+        );
+
+        await foodService.createFoodEntry(foodEntry);
+
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Diet entry created successfully!'),
+              backgroundColor: AppColors.primaryColor,
+            ),
+          );
+
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error creating diet entry: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 } 

@@ -268,7 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           medication: Medication(
             name: name,
             dosage: schedule,
-            time: TimeOfDay.now(), // Replace with actual time
+            times: [TimeOfDay.now()], // Replace with actual time
             startDate: DateTime.now(),
             endDate: DateTime.now().add(const Duration(days: 30)),
             medicineType: 'Tablet',
@@ -687,13 +687,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                         TextButton.icon(
-                          onPressed: () {
-                            Navigator.push(
+                          onPressed: () async {
+                            final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => const StepsCounterScreen(),
                               ),
                             );
+                            // Refresh steps data when returning from steps counter
+                            if (result == true || result == null) {
+                              _loadStepsData();
+                            }
                           },
                           icon: const Icon(Icons.show_chart),
                           label: const Text('View Details'),

@@ -47,7 +47,7 @@ class _AddMedicationModalState extends State<AddMedicationModal> {
       final medication = Medication(
         name: _nameController.text,
         dosage: _dosageController.text,
-        time: _selectedTime,
+        times: [_selectedTime],
         startDate: DateTime.now(),
         endDate: DateTime.now().add(const Duration(days: 30)),
         medicineType: 'Tablet',

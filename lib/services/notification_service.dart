@@ -135,6 +135,74 @@ class NotificationService {
       );
   }
 
+  // Schedule medication reminder with medication data
+  Future<void> scheduleMedicationReminderWithData({
+    required int id,
+    required String medicationName,
+    required String dosage,
+    required DateTime scheduledDate,
+    String? medicationId,
+    String? notes,
+  }) async {
+    final title = 'Medication Reminder';
+    final body = 'Time to take $medicationName - $dosage';
+    final payload = medicationId != null ? 'medication:$medicationId' : null;
+
+    await scheduleMedicationReminder(
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: scheduledDate,
+      payload: payload,
+    );
+  }
+
+  // Show medication taken notification
+  Future<void> showMedicationTakenNotification({
+    required String medicationName,
+    String? notes,
+  }) async {
+    await showNotification(
+      id: DateTime.now().millisecondsSinceEpoch,
+      title: 'Medication Taken',
+      body: 'Successfully logged $medicationName',
+      payload: 'medication_taken',
+    );
+  }
+
+  // Show medication skipped notification
+  Future<void> showMedicationSkippedNotification({
+    required String medicationName,
+    String? notes,
+  }) async {
+    await showNotification(
+      id: DateTime.now().millisecondsSinceEpoch,
+      title: 'Medication Skipped',
+      body: '$medicationName was skipped',
+      payload: 'medication_skipped',
+    );
+  }
+
+  // Snooze medication reminder
+  Future<void> snoozeMedicationReminder({
+    required int originalId,
+    required String medicationName,
+    required String dosage,
+    required Duration snoozeDuration,
+    String? medicationId,
+  }) async {
+    final newId = originalId + 1000; // Create unique ID for snoozed notification
+    final newScheduledTime = DateTime.now().add(snoozeDuration);
+    
+    await scheduleMedicationReminderWithData(
+      id: newId,
+      medicationName: medicationName,
+      dosage: dosage,
+      scheduledDate: newScheduledTime,
+      medicationId: medicationId,
+    );
+  }
+
   // Show a health reading reminder
   Future<void> showHealthReadingReminder({
     required int id,

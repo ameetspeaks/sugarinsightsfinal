@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/enums/content_type.dart';
+import '../../core/enums/share_platform.dart';
+import '../../models/article.dart';
+import '../../providers/education_provider.dart';
+import '../../widgets/common/error_view.dart';
+import '../../widgets/common/loading_view.dart';
 
 class BlogPostDetailScreen extends StatefulWidget {
-  final String? title;
-  final String? timestamp;
-  final String? imageUrl;
-  final String? content;
+  final Article article;
 
   const BlogPostDetailScreen({
     super.key,
-    this.title,
-    this.timestamp,
-    this.imageUrl,
-    this.content,
+    required this.article,
   });
 
   @override
@@ -20,178 +22,227 @@ class BlogPostDetailScreen extends StatefulWidget {
 }
 
 class _BlogPostDetailScreenState extends State<BlogPostDetailScreen> {
-  bool _isFavorite = true; // Default to true as shown in the UI
+  final ScrollController _scrollController = ScrollController();
+  bool _showAppBarTitle = false;
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _recordView();
+  }
+
+  void _onScroll() {
+    if (_scrollController.offset > 200 && !_showAppBarTitle) {
+      setState(() => _showAppBarTitle = true);
+    } else if (_scrollController.offset <= 200 && _showAppBarTitle) {
+      setState(() => _showAppBarTitle = false);
+    }
+  }
+
+  Future<void> _recordView() async {
+    setState(() => _isLoading = true);
+    try {
+      final provider = Provider.of<EducationProvider>(context, listen: false);
+      await provider.recordView(
+        contentId: widget.article.id,
+        contentType: ContentType.article,
+      );
+    } catch (e) {
+      setState(() => _error = 'Failed to record view: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _shareArticle() async {
+    try {
+      final provider = Provider.of<EducationProvider>(context, listen: false);
+      await Share.share(
+        'Check out this article: ${widget.article.title}\n\n'
+        '${widget.article.summary ?? ''}\n\n'
+        'Read more in the Sugar Insights app!',
+        subject: widget.article.title,
+      );
+      await provider.recordShare(
+        contentId: widget.article.id,
+        contentType: ContentType.article,
+        platform: SharePlatform.systemShare,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to share article: $e')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.title ?? 'Why we should use coveshielda',
-          style: const TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        centerTitle: true,
+      body: _isLoading
+          ? const LoadingView(message: 'Loading article...')
+          : _error != null
+              ? ErrorView(
+                  message: _error!,
+                  onRetry: _recordView,
+                )
+              : CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
+                    _buildAppBar(),
+                    SliverToBoxAdapter(
+                      child: _buildContent(),
+                    ),
+                  ],
+                ),
+    );
+  }
+
+  Widget _buildAppBar() {
+    return SliverAppBar(
+      expandedHeight: widget.article.imageUrl != null ? 300.0 : 0.0,
+      floating: false,
+      pinned: true,
+      backgroundColor: Colors.white,
+      elevation: _showAppBarTitle ? 2 : 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.black),
+        onPressed: () => Navigator.pop(context),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Image
-            _buildHeaderImage(),
-            
-            // Article Content
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      title: _showAppBarTitle
+          ? Text(
+              widget.article.title,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 16,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            )
+          : null,
+      actions: [
+        Consumer<EducationProvider>(
+          builder: (context, provider, child) => IconButton(
+            icon: Icon(
+              widget.article.isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: widget.article.isFavorite ? Colors.red : Colors.black,
+            ),
+            onPressed: () => provider.toggleFavorite(
+              contentId: widget.article.id,
+              contentType: ContentType.article,
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.share, color: Colors.black),
+          onPressed: _shareArticle,
+        ),
+      ],
+      flexibleSpace: FlexibleSpaceBar(
+        background: widget.article.imageUrl != null
+            ? Stack(
+                fit: StackFit.expand,
                 children: [
-                  // Title and Favorite Icon
-                  _buildTitleSection(),
-                  
-                  const SizedBox(height: 8),
-                  
-                  // Timestamp
-                  _buildTimestamp(),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Article Content
-                  _buildArticleContent(),
+                  Image.network(
+                    widget.article.imageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.grey[200],
+                        child: Icon(
+                          Icons.article,
+                          size: 50,
+                          color: Colors.grey[400],
+                        ),
+                      );
+                    },
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.7),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
+              )
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!_showAppBarTitle) ...[
+            Text(
+              widget.article.title,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
               ),
             ),
+            const SizedBox(height: 16),
           ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildHeaderImage() {
-    return Container(
-      width: double.infinity,
-      height: 250,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        image: const DecorationImage(
-          image: AssetImage('assets/images/education/virus_article.jpg'),
-          fit: BoxFit.cover,
-        ),
-      ),
-    );
-  }
+          // Metadata row
+          Row(
+            children: [
+              if (widget.article.author != null) ...[
+                Icon(Icons.person_outline, size: 16, color: Colors.grey[600]),
+                const SizedBox(width: 4),
+                Text(
+                  widget.article.author!,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(width: 16),
+              ],
+              if (widget.article.readTime != null) ...[
+                Icon(Icons.timer_outlined, size: 16, color: Colors.grey[600]),
+                const SizedBox(width: 4),
+                Text(
+                  '${widget.article.readTime} min read',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 24),
 
-  Widget _buildTitleSection() {
-    return Row(
-      children: [
-        // Title
-        Expanded(
-          child: Text(
-            widget.title ?? 'Why We Should Use Coveshield',
+          // Article content
+          Text(
+            widget.article.content,
             style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+              fontSize: 16,
+              height: 1.6,
             ),
           ),
-        ),
-        
-        const SizedBox(width: 16),
-        
-        // Favorite Icon
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _isFavorite = !_isFavorite;
-            });
-          },
-          child: Icon(
-            _isFavorite ? Icons.favorite : Icons.favorite_border,
-            color: _isFavorite ? Colors.green : Colors.grey,
-            size: 28,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimestamp() {
-    return Text(
-      widget.timestamp ?? '20-01-2025 10:25pm',
-      style: TextStyle(
-        fontSize: 14,
-        color: Colors.grey[600],
-        fontWeight: FontWeight.w400,
+          const SizedBox(height: 32),
+        ],
       ),
     );
   }
-
-  Widget _buildArticleContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Paragraph 1
-        _buildParagraph(
-          'COVID-19, also known as the Coronavirus, is a global pandemic that has affected people all around the world. It first emerged in a lab in Wuhan, China, in late 2019 and quickly spread to countries around the world. This virus was reportedly caused by SARS-CoV-2. Since then, it has spread rapidly to many countries, causing widespread illness and impacting our lives in numerous ways.',
-        ),
-        
-        const SizedBox(height: 16),
-        
-        // Paragraph 2
-        _buildParagraph(
-          'This blog talks about the details of this virus and also drafts an essay on COVID-19 in 100, 200 and 250 words for students and professionals. COVID-19, also known as the Coronavirus, is a global pandemic that has affected people all around the world.',
-        ),
-        
-        const SizedBox(height: 16),
-        
-        // Paragraph 3
-        _buildParagraph(
-          'It first emerged in a lab in Wuhan, China, in late 2019 and quickly spread to countries around the world. This virus was reportedly caused by SARS-CoV-2.',
-        ),
-        
-        const SizedBox(height: 16),
-        
-        // Additional paragraphs for more content
-        _buildParagraph(
-          'The impact of COVID-19 has been unprecedented, affecting every aspect of our daily lives. From healthcare systems to economies, from education to social interactions, the pandemic has reshaped how we live and work.',
-        ),
-        
-        const SizedBox(height: 16),
-        
-        _buildParagraph(
-          'Vaccination has become a crucial tool in our fight against this virus. Vaccines like Covishield have been developed to help prevent infection and reduce the severity of illness in those who do get infected.',
-        ),
-        
-        const SizedBox(height: 16),
-        
-        _buildParagraph(
-          'It is important to follow public health guidelines, maintain good hygiene practices, and stay informed about the latest developments in our ongoing battle against COVID-19.',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildParagraph(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 16,
-        color: Colors.black,
-        height: 1.6,
-        fontWeight: FontWeight.w400,
-      ),
-    );
-  }
-} 
+}
