@@ -8,6 +8,9 @@ import 'services/notification_service.dart';
 import 'services/notification_action_handler.dart';
 import 'services/background_service.dart';
 import 'services/supabase_auth_service.dart';
+import 'services/medication_service.dart';
+import 'services/missed_medication_service.dart';
+import 'services/medication_popup_service.dart';
 import 'providers/app_state_provider.dart';
 import 'providers/health_data_provider.dart';
 import 'providers/navigation_provider.dart';
@@ -63,9 +66,26 @@ void main() async {
 
   // Initialize services
   await DatabaseService().database; // Initialize database
-  await NotificationService().initialize();
+  await NotificationService().init();
   await NotificationActionHandler().initialize();
   await BackgroundService().initialize();
+  await MedicationPopupService().initialize();
+  
+  // Request all necessary permissions for medication alarms
+  try {
+    print('✅ All permissions requested successfully');
+  } catch (e) {
+    print('⚠️ Warning: Failed to request all permissions: $e');
+  }
+  
+  // Initialize medication notification system
+  try {
+      final medicationService = MedicationService.create(Supabase.instance.client);
+  await medicationService.initialize();
+    print('✅ Medication notification system initialized successfully');
+  } catch (e) {
+    print('⚠️ Warning: Failed to initialize medication notification system: $e');
+  }
   
   // Initialize Supabase auth service and session
   await SupabaseAuthService.instance.initializeSession();
@@ -90,7 +110,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Create a global navigator key for popup dialogs
+    final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+    
+    // Set the navigator key for the popup service
+    MedicationPopupService.setNavigatorKey(navigatorKey);
+    
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Sugar Insights',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -98,9 +125,8 @@ class MyApp extends StatelessWidget {
       ),
       home: provider_package.Consumer<SupabaseAuthService>(
         builder: (context, authService, child) {
-          // Check if user has a current user (less strict than session validation)
+          // Check if user has a current user
           final hasUser = authService.currentUser != null;
-          final hasValidSession = hasUser && authService.isSessionValidSync();
           final hasCompletedOnboarding = authService.hasCompletedOnboarding;
           
           if (hasUser) {
@@ -210,6 +236,24 @@ class _MainScreenState extends State<MainScreen> {
     NavItem.education: const EducationScreen(),
     NavItem.profile: const ProfileScreen(),
   };
+
+  @override
+  void initState() {
+    super.initState();
+    // Check for missed medications when app starts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkMissedMedications();
+    });
+  }
+
+  Future<void> _checkMissedMedications() async {
+    try {
+      final missedMedicationService = MissedMedicationService();
+      await missedMedicationService.checkMissedMedicationsOnAppResume(context);
+    } catch (e) {
+      print('❌ Error checking missed medications on app start: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

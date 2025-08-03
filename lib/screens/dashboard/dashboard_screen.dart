@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/enums/dashboard_enums.dart';
 import '../../widgets/dashboard/glucose_card.dart';
@@ -12,12 +13,14 @@ import '../../services/supabase_auth_service.dart';
 import '../../services/blood_pressure_service.dart';
 import '../../services/other_vitals_service.dart';
 import '../../services/steps_service.dart';
+import '../../services/medication_service.dart';
+import '../../services/notification_service.dart';
+import '../../models/medication.dart';
 
 import '../health/log_blood_pressure_screen.dart';
 import '../health/log_glucose_screen.dart';
 import '../health/log_medication_screen.dart';
 import '../health/medication_details_screen.dart';
-import '../../models/medication.dart';
 import '../health/log_other_vitals_screen.dart';
 import '../health/steps_counter_screen.dart';
 
@@ -57,6 +60,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   
   // User data
   Map<String, dynamic>? _userProfile;
+  
+  // Medication data
+  List<Map<String, dynamic>> _todayMedications = [];
+  bool _isLoadingMedications = true;
 
   @override
   void initState() {
@@ -68,6 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadVitalsData();
     _loadSummaryData();
     _loadStepsData();
+    _loadMedicationData();
   }
 
   @override
@@ -87,6 +95,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _loadVitalsData(),
       _loadSummaryData(),
       _loadStepsData(),
+      _loadMedicationData(),
     ]);
   }
 
@@ -256,6 +265,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
       print('❌ Error loading steps data: $e');
       setState(() {
         _isLoadingSteps = false;
+      });
+    }
+  }
+
+  Future<void> _loadMedicationData() async {
+    try {
+      setState(() {
+        _isLoadingMedications = true;
+      });
+
+      final medicationService = MedicationService.instance;
+      final today = DateTime.now();
+      final todayMedications = await medicationService.getTodayMedications(today);
+      
+      print('📊 Dashboard: Raw today medications: $todayMedications');
+      
+      // Show both pending and taken medications for today
+      final todayMedicationsFiltered = todayMedications
+          .where((med) {
+            // Only show medications scheduled for today
+            final scheduledTime = med['scheduled_time'];
+            if (scheduledTime == null) return false;
+            
+            // Parse the time string (format: "HH:MM:SS")
+            final timeParts = scheduledTime.toString().split(':');
+            if (timeParts.length < 2) return false;
+            
+            final hour = int.tryParse(timeParts[0]) ?? 0;
+            final minute = int.tryParse(timeParts[1]) ?? 0;
+            
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+            final scheduledDateTime = DateTime(today.year, today.month, today.day, hour, minute);
+            
+            // Include medications for today (both past and future)
+            return scheduledDateTime.isAfter(today.subtract(const Duration(days: 1)));
+          })
+          .toList();
+      
+      print('📊 Dashboard: Filtered to ${todayMedicationsFiltered.length} today medications');
+      
+      setState(() {
+        _todayMedications = todayMedicationsFiltered;
+        _isLoadingMedications = false;
+      });
+
+      // Automatically schedule immediate notifications for medications due soon
+      try {
+        await medicationService.scheduleImmediateNotifications();
+        print('✅ Automatic immediate notification scheduling completed');
+      } catch (e) {
+        print('⚠️ Warning: Automatic immediate notification scheduling failed: $e');
+      }
+    } catch (e) {
+      print('❌ Error loading medication data: $e');
+      setState(() {
+        _isLoadingMedications = false;
       });
     }
   }
@@ -478,65 +544,110 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Medication Reminders',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const LogMedicationScreen(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Medication Reminders',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
                               ),
-                            );
-                          },
-                          icon: const Icon(Icons.add, size: 20),
-                          label: const Text('Add New'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppColors.primaryColor,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const LogMedicationScreen(),
+                                  ),
+                                );
+                                // Refresh medication data when returning
+                                _loadMedicationData();
+                              },
+                              icon: const Icon(Icons.add, size: 20),
+                              label: const Text('Add New'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.primaryColor,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                              ),
+                            ),
+                          ],
                         ),
+
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          _buildMedicationReminderCard(
-                            name: 'Metformin',
-                            schedule: '1 Pill After Lunch',
-                            time: '12:31 PM',
-                            isUpcoming: true,
-                          ),
-                          const Divider(height: 1),
-                          _buildMedicationReminderCard(
-                            name: 'Omega',
-                            schedule: '1 Pill After Dinner',
-                            time: '9:00 PM',
-                            isUpcoming: true,
-                          ),
-                        ],
-                      ),
-                    ),
+                    _isLoadingMedications
+                        ? Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: AppColors.primaryColor,
+                              ),
+                            ),
+                          )
+                        : _todayMedications.isEmpty
+                            ? Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.05),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      Icons.medication_outlined,
+                                      size: 48,
+                                      color: Colors.grey[400],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'No upcoming medications',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'All medications for today have been taken or scheduled for later',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[500],
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : Column(
+                                children: _todayMedications.map((medication) {
+                                  return _buildDashboardMedicationCard(medication);
+                                }).toList(),
+                              ),
                   ],
                 ),
               ),
@@ -894,129 +1005,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildMedicationReminderCard({
-    required String name,
-    required String schedule,
-    required String time,
-    required bool isUpcoming,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () => _viewMedicationDetails(name, schedule),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.medication,
-                    color: AppColors.primaryColor,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        schedule,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    time,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.primaryColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: Handle medication taken
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Marked $name as taken'),
-                        backgroundColor: AppColors.primaryColor,
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Taken'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    // TODO: Handle medication skipped
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Marked $name as skipped'),
-                        backgroundColor: Colors.grey,
-                      ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[700],
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    side: BorderSide(color: Colors.grey[300]!),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Skip'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildVitalMetric({
     required String label,
     required String value,
@@ -1077,6 +1065,171 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDashboardMedicationCard(Map<String, dynamic> medication) {
+    final name = medication['medication_name'] ?? 'Unknown';
+    final dosage = medication['dosage'] ?? '';
+    final scheduledTime = medication['scheduled_time'] ?? '';
+    final medicationId = medication['medication_id'];
+    final status = medication['status'] ?? 'pending';
+    
+    print('🎨 Dashboard: Building card for $name at $scheduledTime (Status: $status)');
+    
+    // Format the time for display
+    String displayTime = '';
+    if (scheduledTime != null && scheduledTime.toString().isNotEmpty) {
+      final timeStr = scheduledTime.toString();
+      final timeParts = timeStr.split(':');
+      if (timeParts.length >= 2) {
+        final hour = int.tryParse(timeParts[0]) ?? 0;
+        final minute = int.tryParse(timeParts[1]) ?? 0;
+        final period = hour >= 12 ? 'PM' : 'AM';
+        final displayHour = hour > 12 ? hour - 12 : hour == 0 ? 12 : hour;
+        displayTime = '${displayHour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
+      }
+    }
+    
+    // Determine status
+    final isTaken = status == 'taken';
+    final isPending = status == 'pending';
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Pill Icon (Left side) - Light blue circle with pill icon
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.primaryColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(
+                Icons.medication,
+                color: AppColors.primaryColor,
+                size: 22,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          
+          // Medication Details (Center)
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isTaken ? Colors.grey[600] : AppColors.primaryColor,
+                    decoration: isTaken ? TextDecoration.lineThrough : null,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dosage,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  displayTime,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Status Circle (Right side) - Acts as "Mark as Taken" button
+          GestureDetector(
+            onTap: isPending ? () async {
+              try {
+                final medicationService = MedicationService.instance;
+                
+                // Find the scheduled time for today
+                final today = DateTime.now();
+                final timeStr = scheduledTime.toString();
+                final timeParts = timeStr.split(':');
+                final hour = int.tryParse(timeParts[0]) ?? 0;
+                final minute = int.tryParse(timeParts[1]) ?? 0;
+                final scheduledDateTime = DateTime(today.year, today.month, today.day, hour, minute);
+                
+                await medicationService.logMedicationTaken(
+                  medicationId,
+                  scheduledDateTime,
+                  DateTime.now(),
+                  'Marked as taken from dashboard',
+                );
+                
+                // Refresh medication data
+                _loadMedicationData();
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('$name marked as taken'),
+                    backgroundColor: AppColors.primaryColor,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to mark as taken: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            } : null,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isTaken ? AppColors.primaryColor : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.primaryColor,
+                  width: 2,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  isTaken ? Icons.check : null,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 } 

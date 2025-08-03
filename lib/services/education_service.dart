@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import '../core/enums/content_type.dart';
 import '../core/enums/share_platform.dart';
 import '../models/article.dart';
@@ -7,23 +12,55 @@ import '../models/video.dart';
 
 class EducationService {
   final SupabaseClient _supabase;
+  
+  // Cache for categories
+  List<EducationCategory>? _categoriesCache;
+  DateTime? _categoriesCacheTime;
+  static const Duration _cacheDuration = Duration(minutes: 15);
+  
+  // Cache for category icons
+  final Map<String, Uint8List> _iconCache = {};
+  final Map<String, DateTime> _iconCacheTime = {};
+  static const Duration _iconCacheDuration = Duration(hours: 1);
 
   EducationService(this._supabase);
 
   Future<List<EducationCategory>> getCategories() async {
     try {
+      // Check if we have valid cached data
+      if (_categoriesCache != null && _categoriesCacheTime != null) {
+        final cacheAge = DateTime.now().difference(_categoriesCacheTime!);
+        if (cacheAge < _cacheDuration) {
+          print('📋 Returning cached categories (${_categoriesCache!.length} categories)');
+          return _categoriesCache!;
+        }
+      }
+
+      print('🔍 Fetching education categories from database...');
+      
       final response = await _supabase
           .from('education_categories')
           .select()
           .eq('is_active', true)
           .order('sort_order');
 
+      print('📋 Raw response from database: $response');
+
       List<EducationCategory> categories = (response as List)
-          .map((json) => EducationCategory.fromJson(json))
+          .map((json) {
+            print('🔍 Processing category: ${json['name']} with icon_name: ${json['icon_name']}, image_path: ${json['image_path']}');
+            return EducationCategory.fromJson(json);
+          })
           .toList();
+
+      print('✅ Processed ${categories.length} categories');
+      for (final category in categories) {
+        print('   - ${category.name}: iconName=${category.iconName}, imagePath=${category.imagePath}');
+      }
 
       // If no categories exist, insert the default blog categories
       if (categories.isEmpty) {
+        print('⚠️ No categories found, inserting default categories...');
         await _insertDefaultCategories();
         // Fetch again after insertion
         final newResponse = await _supabase
@@ -37,8 +74,14 @@ class EducationService {
             .toList();
       }
 
+      // Cache the results
+      _categoriesCache = categories;
+      _categoriesCacheTime = DateTime.now();
+      print('💾 Cached ${categories.length} categories');
+
       return categories;
     } catch (e) {
+      print('❌ Error loading categories: $e');
       throw 'Failed to load categories: $e';
     }
   }
@@ -413,5 +456,90 @@ class EducationService {
     } catch (e) {
       throw 'Failed to record share: $e';
     }
+  }
+
+  /// Fetch and cache category icon from database
+  Future<Uint8List?> getCategoryIcon(String categoryId, String? imagePath) async {
+    try {
+      // Check if we have a valid cached icon
+      if (_iconCache.containsKey(categoryId) && _iconCacheTime.containsKey(categoryId)) {
+        final cacheAge = DateTime.now().difference(_iconCacheTime[categoryId]!);
+        if (cacheAge < _iconCacheDuration) {
+          print('📋 Returning cached icon for category: $categoryId');
+          return _iconCache[categoryId];
+        }
+      }
+
+      // If no image path, return null
+      if (imagePath == null || imagePath.isEmpty) {
+        print('⚠️ No image path for category: $categoryId');
+        return null;
+      }
+
+      print('🔍 Fetching icon for category: $categoryId from: $imagePath');
+
+      // Try to fetch from Supabase storage
+      try {
+        final response = await _supabase.storage
+            .from('educationcategories')
+            .download(imagePath.split('/').last);
+
+        // Cache the icon
+        _iconCache[categoryId] = response;
+        _iconCacheTime[categoryId] = DateTime.now();
+        print('✅ Downloaded and cached icon for category: $categoryId');
+
+        return response;
+      } catch (e) {
+        print('❌ Failed to download icon from storage: $e');
+        
+        // Try to fetch from network URL
+        try {
+          final response = await http.get(Uri.parse(imagePath));
+          
+          if (response.statusCode == 200) {
+            final iconData = response.bodyBytes;
+            
+            // Cache the icon
+            _iconCache[categoryId] = iconData;
+            _iconCacheTime[categoryId] = DateTime.now();
+            print('✅ Downloaded and cached icon from network for category: $categoryId');
+            
+            return iconData;
+          } else {
+            print('❌ Failed to download icon from network: ${response.statusCode}');
+            return null;
+          }
+        } catch (networkError) {
+          print('❌ Failed to download icon from network: $networkError');
+          return null;
+        }
+      }
+    } catch (e) {
+      print('❌ Error fetching category icon: $e');
+      return null;
+    }
+  }
+
+  /// Clear all caches
+  void clearCache() {
+    _categoriesCache = null;
+    _categoriesCacheTime = null;
+    _iconCache.clear();
+    _iconCacheTime.clear();
+    print('🗑️ Cleared all education service caches');
+  }
+
+  /// Get cache statistics
+  Map<String, dynamic> getCacheStats() {
+    return {
+      'categories_cached': _categoriesCache != null,
+      'categories_cache_age': _categoriesCacheTime != null 
+          ? DateTime.now().difference(_categoriesCacheTime!).inMinutes 
+          : null,
+      'icons_cached': _iconCache.length,
+      'cache_duration_minutes': _cacheDuration.inMinutes,
+      'icon_cache_duration_hours': _iconCacheDuration.inHours,
+    };
   }
 }

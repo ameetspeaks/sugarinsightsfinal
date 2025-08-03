@@ -5,6 +5,7 @@ import '../../models/education_category.dart';
 import '../../providers/education_provider.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/loading_view.dart';
+import '../../widgets/education/education_category_card.dart';
 import 'category_detail_screen.dart';
 
 class EducationScreen extends StatefulWidget {
@@ -48,7 +49,8 @@ class _EducationScreenState extends State<EducationScreen> {
     setState(() {
       _filteredCategories = provider.categories
           .where((category) =>
-              category.name.toLowerCase().contains(query.toLowerCase()))
+              category.name.toLowerCase().contains(query.toLowerCase()) ||
+              (category.description?.toLowerCase().contains(query.toLowerCase()) ?? false))
           .toList();
     });
   }
@@ -67,7 +69,7 @@ class _EducationScreenState extends State<EducationScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'Blog Category',
+          'Education Categories',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -123,9 +125,17 @@ class _EducationScreenState extends State<EducationScreen> {
                   controller: _searchController,
                   onChanged: _filterCategories,
                   decoration: InputDecoration(
-                    hintText: 'Search Patients Name/Unique Number',
+                    hintText: 'Search categories...',
                     prefixIcon: const Icon(Icons.search),
-                    suffixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              _filterCategories('');
+                            },
+                          )
+                        : null,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -140,12 +150,34 @@ class _EducationScreenState extends State<EducationScreen> {
               Expanded(
                 child: _filteredCategories.isEmpty
                     ? Center(
-                        child: Text(
-                          'No categories found',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
-                          ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _searchController.text.isNotEmpty
+                                  ? 'No categories found for "${_searchController.text}"'
+                                  : 'No categories found',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            if (_searchController.text.isNotEmpty)
+                              TextButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _filterCategories('');
+                                },
+                                child: const Text('Clear search'),
+                              ),
+                          ],
                         ),
                       )
                     : RefreshIndicator(
@@ -155,108 +187,28 @@ class _EducationScreenState extends State<EducationScreen> {
                           itemCount: _filteredCategories.length,
                           itemBuilder: (context, index) {
                             final category = _filteredCategories[index];
-                            return _buildCategoryCard(category);
-                          },
-                        ),
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildCategoryCard(EducationCategory category) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CategoryDetailScreen(category: category),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Category Icon
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(25),
-                ),
-                child: category.iconName != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(25),
-                        child: Image.asset(
-                          category.iconName!,
-                          width: 30,
-                          height: 30,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Icon(
-                              Icons.category,
-                              color: AppColors.primaryColor,
-                              size: 24,
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: EducationCategoryCard(
+                                category: category,
+                                backgroundColor: Colors.white,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CategoryDetailScreen(category: category),
+                                    ),
+                                  );
+                                },
+                              ),
                             );
                           },
                         ),
-                      )
-                    : Icon(
-                        Icons.category,
-                        color: AppColors.primaryColor,
-                        size: 24,
                       ),
-              ),
-              
-              const SizedBox(width: 16),
-              
-              // Category Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      category.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primaryColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      category.contentSummary,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Arrow icon
-              Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.grey[400],
-                size: 16,
               ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }

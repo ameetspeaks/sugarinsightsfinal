@@ -72,7 +72,7 @@ class _LogMedicationScreenState extends State<LogMedicationScreen> {
   @override
   void initState() {
     super.initState();
-    _medicationService = MedicationService(Supabase.instance.client);
+    _medicationService = MedicationService.instance;
     
     if (widget.medication != null) {
       _medicationNameController.text = widget.medication!.name;

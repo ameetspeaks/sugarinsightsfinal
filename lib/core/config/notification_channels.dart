@@ -5,15 +5,18 @@ class NotificationChannels {
   static const Color defaultColor = Color(0xFF9D50DD);
 
   static final List<AndroidNotificationChannel> channels = [
-    // Medication Alarms - High priority, alarm sound, critical alerts
+    // Medication Alarms - Max priority, alarm sound, critical alerts
     const AndroidNotificationChannel(
       'medication_alarms',
       'Medication Alarms',
       description: 'Critical alerts for medication reminders',
-      importance: Importance.high,
+      importance: Importance.max,
       playSound: true,
       enableVibration: true,
-      sound: RawResourceAndroidNotificationSound('medication_alarm'),
+      // Use custom alarm sound for medication reminders
+      sound: RawResourceAndroidNotificationSound('alarm_mp3'),
+      enableLights: true,
+      ledColor: Color(0xFFFF0000), // Red LED for alarms
     ),
 
     // Medication Reminders - High priority, notification sound
@@ -24,6 +27,8 @@ class NotificationChannels {
       importance: Importance.high,
       playSound: true,
       enableVibration: true,
+      // Use custom alarm sound for medication reminders
+      sound: RawResourceAndroidNotificationSound('alarm_mp3'),
     ),
 
     // Health Readings - Medium priority

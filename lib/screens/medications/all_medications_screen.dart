@@ -21,7 +21,7 @@ class _AllMedicationsScreenState extends State<AllMedicationsScreen> {
   @override
   void initState() {
     super.initState();
-    _medicationService = MedicationService(Supabase.instance.client);
+    _medicationService = MedicationService.instance;
     _loadMedications();
   }
 

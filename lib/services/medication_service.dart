@@ -1,11 +1,334 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import '../models/medication.dart';
+import 'notification_service.dart';
+import 'reminder_scheduler.dart';
 
 class MedicationService {
+  static MedicationService? _instance;
   final SupabaseClient _supabase;
+  late final NotificationService _notificationService;
+  late final ReminderScheduler _reminderScheduler;
 
-  MedicationService(this._supabase);
+  MedicationService._internal(this._supabase);
+
+  static MedicationService get instance {
+    if (_instance == null) {
+      _instance = MedicationService._internal(Supabase.instance.client);
+    }
+    return _instance!;
+  }
+
+  static MedicationService create(SupabaseClient supabase) {
+    if (_instance == null) {
+      _instance = MedicationService._internal(supabase);
+    }
+    return _instance!;
+  }
+
+  /// Initialize the medication service
+  Future<void> initialize() async {
+    try {
+      print('🔧 Initializing MedicationService...');
+      
+      // Initialize notification service
+      _notificationService = NotificationService();
+      await _notificationService.init();
+      
+      // Initialize reminder scheduler
+      _reminderScheduler = ReminderScheduler(_supabase, _notificationService);
+      await _reminderScheduler.initialize();
+      
+      print('✅ MedicationService initialized successfully');
+    } catch (e) {
+      print('❌ Error initializing MedicationService: $e');
+      throw 'Failed to initialize MedicationService: $e';
+    }
+  }
+
+  // ============================================================================
+  // NOTIFICATION INTEGRATION
+  // ============================================================================
+
+  /// Schedule notifications for a medication
+  Future<void> scheduleMedicationNotifications(Medication medication) async {
+    try {
+      print('🔔 Scheduling notifications for medication: ${medication.name}');
+      
+      // Use the reminder scheduler to handle notification scheduling
+      await _reminderScheduler.scheduleMedicationReminders(medication);
+      
+      print('✅ Successfully scheduled notifications for ${medication.name}');
+    } catch (e) {
+      print('❌ Error scheduling medication notifications: $e');
+      throw 'Failed to schedule medication notifications: $e';
+    }
+  }
+
+  /// Update notifications for a medication
+  Future<void> updateMedicationNotifications(Medication medication) async {
+    try {
+      print('🔄 Updating notifications for medication: ${medication.name}');
+      
+      await _reminderScheduler.updateMedicationReminders(medication);
+      
+      print('✅ Successfully updated notifications for ${medication.name}');
+    } catch (e) {
+      print('❌ Error updating medication notifications: $e');
+      throw 'Failed to update medication notifications: $e';
+    }
+  }
+
+  /// Cancel notifications for a medication
+  Future<void> cancelMedicationNotifications(String medicationId) async {
+    try {
+      print('❌ Cancelling notifications for medication: $medicationId');
+      
+      await _reminderScheduler.cancelMedicationReminders(medicationId);
+      
+      print('✅ Successfully cancelled notifications for medication: $medicationId');
+    } catch (e) {
+      print('❌ Error cancelling medication notifications: $e');
+      throw 'Failed to cancel medication notifications: $e';
+    }
+  }
+
+  /// Snooze a medication reminder
+  Future<void> snoozeMedicationReminder({
+    required String medicationId,
+    required String medicationName,
+    required String dosage,
+    required Duration snoozeDuration,
+    required int originalNotificationId,
+  }) async {
+    try {
+      print('⏰ Snoozing medication reminder for: $medicationName');
+      
+      await _reminderScheduler.snoozeMedicationReminder(
+        medicationId: medicationId,
+        medicationName: medicationName,
+        dosage: dosage,
+        snoozeDuration: snoozeDuration,
+        originalNotificationId: originalNotificationId,
+      );
+      
+      print('✅ Successfully snoozed reminder for $medicationName');
+    } catch (e) {
+      print('❌ Error snoozing medication reminder: $e');
+      throw 'Failed to snooze medication reminder: $e';
+    }
+  }
+
+  /// Show medication taken notification
+  Future<void> showMedicationTakenNotification(String medicationName) async {
+    try {
+      await _notificationService.showMedicationTakenNotification(
+        medicationName: medicationName,
+        dosage: 1,
+        medicationId: 'taken-$medicationName',
+      );
+      print('✅ Showed medication taken notification for $medicationName');
+    } catch (e) {
+      print('❌ Error showing medication taken notification: $e');
+    }
+  }
+
+  /// Show medication skipped notification
+  Future<void> showMedicationSkippedNotification(String medicationName) async {
+    try {
+      await _notificationService.showMedicationSkippedNotification(
+        medicationName: medicationName,
+        dosage: 1,
+        medicationId: 'skipped-$medicationName',
+      );
+      print('✅ Showed medication skipped notification for $medicationName');
+    } catch (e) {
+      print('❌ Error showing medication skipped notification: $e');
+    }
+  }
+
+  /// Reschedule all active medications (for fixing notification issues)
+  Future<void> rescheduleAllActiveMedications() async {
+    try {
+      print('🔄 Rescheduling all active medications...');
+      
+      // Get all active medications
+      final medications = await getMedications();
+      final activeMedications = medications.where((med) => med.isActive).toList();
+      
+      print('📋 Found ${activeMedications.length} active medications to reschedule');
+      
+      for (final medication in activeMedications) {
+        try {
+          print('🔄 Rescheduling notifications for: ${medication.name}');
+          await scheduleMedicationNotifications(medication);
+          print('✅ Successfully rescheduled notifications for: ${medication.name}');
+        } catch (e) {
+          print('❌ Error rescheduling notifications for ${medication.name}: $e');
+        }
+      }
+      
+      print('✅ Completed rescheduling all active medications');
+    } catch (e) {
+      print('❌ Error rescheduling all active medications: $e');
+      throw 'Failed to reschedule all active medications: $e';
+    }
+  }
+
+  /// Schedule immediate notifications for medications due soon
+  Future<void> scheduleImmediateNotifications() async {
+    try {
+      print('🔔 Scheduling immediate notifications for medications due soon...');
+      
+      // Get all active medications
+      final medications = await getMedications();
+      final activeMedications = medications.where((med) => med.isActive).toList();
+      
+      print('📋 Found ${activeMedications.length} active medications to check');
+      
+      for (final medication in activeMedications) {
+        try {
+          await _reminderScheduler.scheduleImmediateNotifications(medication);
+        } catch (e) {
+          print('❌ Error scheduling immediate notifications for ${medication.name}: $e');
+        }
+      }
+      
+      print('✅ Completed scheduling immediate notifications');
+    } catch (e) {
+      print('❌ Error scheduling immediate notifications: $e');
+      throw 'Failed to schedule immediate notifications: $e';
+    }
+  }
+
+  /// Schedule next occurrence notifications for all medications
+  Future<void> scheduleNextOccurrenceNotifications() async {
+    try {
+      print('🔔 Scheduling next occurrence notifications for all medications...');
+      
+      // Get all active medications
+      final medications = await getMedications();
+      final activeMedications = medications.where((med) => med.isActive).toList();
+      
+      print('📋 Found ${activeMedications.length} active medications to schedule');
+      
+      for (final medication in activeMedications) {
+        try {
+          await _reminderScheduler.scheduleNextOccurrenceNotifications(medication);
+        } catch (e) {
+          print('❌ Error scheduling next occurrence notifications for ${medication.name}: $e');
+        }
+      }
+      
+      print('✅ Completed scheduling next occurrence notifications');
+    } catch (e) {
+      print('❌ Error scheduling next occurrence notifications: $e');
+      throw 'Failed to schedule next occurrence notifications: $e';
+    }
+  }
+
+  /// Check and fix timezone issues for medication scheduling
+  Future<void> checkAndFixTimezoneIssues() async {
+    try {
+      print('🌍 Checking and fixing timezone issues...');
+      
+      // Get current time in IST
+      final now = DateTime.now();
+      print('   Current time: $now');
+      print('   Current timezone: ${now.timeZoneName}');
+      
+      // Check if we're in IST (UTC+5:30)
+      final utcOffset = now.timeZoneOffset;
+      final istOffset = const Duration(hours: 5, minutes: 30);
+      
+      if (utcOffset != istOffset) {
+        print('   ⚠️ Warning: Not in IST timezone. Current offset: $utcOffset, Expected: $istOffset');
+        print('   📝 This may cause notification timing issues');
+      } else {
+        print('   ✅ Timezone is correct (IST)');
+      }
+      
+      // Reschedule all medications to ensure proper timing
+      await rescheduleAllActiveMedications();
+      
+      print('✅ Timezone check and fix completed');
+    } catch (e) {
+      print('❌ Error checking and fixing timezone issues: $e');
+      throw 'Failed to check and fix timezone issues: $e';
+    }
+  }
+
+  /// Get next medication reminder time
+  Future<DateTime?> getNextMedicationReminder() async {
+    try {
+      final nextReminder = await _reminderScheduler.getNextMedicationReminder();
+      if (nextReminder != null && nextReminder['scheduled_time'] != null) {
+        return DateTime.parse(nextReminder['scheduled_time']);
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error getting next medication reminder: $e');
+      return null;
+    }
+  }
+
+  /// Check for missed medications
+  Future<void> checkMissedMedications() async {
+    try {
+      await _reminderScheduler.checkMissedMedications();
+    } catch (e) {
+      print('❌ Error checking missed medications: $e');
+    }
+  }
+
+  /// Initialize medication notification system
+  Future<void> initializeMedicationNotifications() async {
+    try {
+      print('🔔 Initializing medication notification system');
+      
+      // Initialize notification service
+      await _notificationService.init();
+      
+      // Initialize reminder scheduler
+      await _reminderScheduler.initialize();
+      
+      // Check for missed medications
+      await checkMissedMedications();
+      
+      // Schedule notifications for all active medications
+      await scheduleNotificationsForAllMedications();
+      
+      print('✅ Medication notification system initialized');
+    } catch (e) {
+      print('❌ Error initializing medication notifications: $e');
+      throw 'Failed to initialize medication notifications: $e';
+    }
+  }
+
+  /// Schedule notifications for all active medications
+  Future<void> scheduleNotificationsForAllMedications() async {
+    try {
+      print('🔔 Scheduling notifications for all active medications');
+      
+      final medications = await getMedications();
+      print('📋 Found ${medications.length} active medications');
+      
+      for (final medication in medications) {
+        if (medication.isActive) {
+          try {
+            await scheduleMedicationNotifications(medication);
+            print('✅ Scheduled notifications for: ${medication.name}');
+          } catch (e) {
+            print('❌ Failed to schedule notifications for ${medication.name}: $e');
+          }
+        }
+      }
+      
+      print('✅ Completed scheduling notifications for all medications');
+    } catch (e) {
+      print('❌ Error scheduling notifications for all medications: $e');
+    }
+  }
 
   // ============================================================================
   // CORE MEDICATION OPERATIONS
@@ -92,7 +415,20 @@ class MedicationService {
 
       print('Response from database: $response');
 
-      return Medication.fromJson(response);
+      final createdMedication = Medication.fromJson(response);
+      
+      // Schedule notifications for the new medication
+      if (createdMedication.isActive) {
+        try {
+          await scheduleMedicationNotifications(createdMedication);
+          print('✅ Successfully scheduled notifications for new medication: ${createdMedication.name}');
+        } catch (e) {
+          print('⚠️ Warning: Failed to schedule notifications for new medication: $e');
+          // Don't throw here as the medication was created successfully
+        }
+      }
+
+      return createdMedication;
     } catch (e) {
       print('Error creating medication: $e');
       throw 'Failed to create medication: $e';
@@ -129,7 +465,28 @@ class MedicationService {
 
       print('Response from database: $response');
 
-      return Medication.fromJson(response);
+      final updatedMedication = Medication.fromJson(response);
+      
+      // Update notifications for the modified medication
+      if (updatedMedication.isActive) {
+        try {
+          await updateMedicationNotifications(updatedMedication);
+          print('✅ Successfully updated notifications for medication: ${updatedMedication.name}');
+        } catch (e) {
+          print('⚠️ Warning: Failed to update notifications for medication: $e');
+          // Don't throw here as the medication was updated successfully
+        }
+      } else {
+        // Cancel notifications if medication is deactivated
+        try {
+          await cancelMedicationNotifications(updatedMedication.id!);
+          print('✅ Successfully cancelled notifications for deactivated medication: ${updatedMedication.name}');
+        } catch (e) {
+          print('⚠️ Warning: Failed to cancel notifications for deactivated medication: $e');
+        }
+      }
+
+      return updatedMedication;
     } catch (e) {
       print('Error updating medication: $e');
       throw 'Failed to update medication: $e';
@@ -143,6 +500,14 @@ class MedicationService {
           .from('medications')
           .update({'is_active': false})
           .eq('id', medicationId);
+      
+      // Cancel notifications for the deleted medication
+      try {
+        await cancelMedicationNotifications(medicationId);
+        print('✅ Successfully cancelled notifications for deleted medication: $medicationId');
+      } catch (e) {
+        print('⚠️ Warning: Failed to cancel notifications for deleted medication: $e');
+      }
     } catch (e) {
       throw 'Failed to delete medication: $e';
     }
@@ -320,6 +685,16 @@ class MedicationService {
       });
 
       print('✅ Medication logged successfully: $response');
+      
+      // Show medication taken notification
+      try {
+        // Get medication name for notification
+        final medication = await getMedicationById(medicationId);
+        await showMedicationTakenNotification(medication.name);
+      } catch (e) {
+        print('⚠️ Warning: Failed to show medication taken notification: $e');
+      }
+      
       return response.toString();
     } catch (e) {
       print('❌ Error logging medication as taken: $e');
@@ -365,6 +740,15 @@ class MedicationService {
         'p_scheduled_for': scheduledFor.toIso8601String(),
         'p_notes': notes,
       });
+
+      // Show medication skipped notification
+      try {
+        // Get medication name for notification
+        final medication = await getMedicationById(medicationId);
+        await showMedicationSkippedNotification(medication.name);
+      } catch (e) {
+        print('⚠️ Warning: Failed to show medication skipped notification: $e');
+      }
 
       return response.toString();
     } catch (e) {

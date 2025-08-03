@@ -28,7 +28,7 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
   String _selectedGender = 'Male';
   String _selectedDiabetesType = 'Type 2';
   String _selectedUnits = 'mg/dL';
-  DateTime? _diagnosisDate;
+  String? _diagnosisDate;
   DateTime? _selectedDate;
   String _selectedDiabetesStatus = 'None';
   String? _age; // Calculated age from date of birth
@@ -156,11 +156,7 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
         
         // Set diagnosis date
         if (userProfile['diagnosis_date'] != null) {
-          try {
-            _diagnosisDate = DateTime.parse(userProfile['diagnosis_date']);
-          } catch (e) {
-            print('❌ Error parsing diagnosis date: $e');
-          }
+          _diagnosisDate = userProfile['diagnosis_date'];
         }
         
         // Load profile image URL
@@ -280,7 +276,7 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
         'diabetes_type': diabetesType, // Can be null for non-diabetic users
         'gender': gender,
         'date_of_birth': _selectedDate?.toIso8601String(),
-        'diagnosis_date': _diagnosisDate?.toIso8601String(), // Can be null for non-diabetic users
+        'diagnosis_date': _diagnosisDate, // Can be null for non-diabetic users
         'updated_at': DateTime.now().toIso8601String(),
       };
 
@@ -302,16 +298,42 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
     }
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
+  Future<void> _selectDiagnosisTimeline(BuildContext context) async {
+    final List<String> timelines = [
+      'Less than 6 months ago',
+      'Less than 1 year ago',
+      '1-5 year ago',
+      'More than 5 year ago',
+      'I have not been diagnosed',
+    ];
+    
+    final String? selected = await showDialog<String>(
       context: context,
-      initialDate: _diagnosisDate ?? DateTime.now(),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select Diagnosis Timeline'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: timelines.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  title: Text(timelines[index]),
+                  onTap: () {
+                    Navigator.of(context).pop(timelines[index]);
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
-    if (picked != null && picked != _diagnosisDate) {
+    
+    if (selected != null && selected != _diagnosisDate) {
       setState(() {
-        _diagnosisDate = picked;
+        _diagnosisDate = selected;
       });
     }
   }
@@ -661,10 +683,10 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  _buildDateField(
-                    label: 'Diagnosis Date',
+                  _buildTimelineField(
+                    label: 'Diagnosis Timeline',
                     value: _diagnosisDate,
-                    onTap: () => _selectDate(context),
+                    onTap: () => _selectDiagnosisTimeline(context),
                   ),
                   const SizedBox(height: 16),
                   _buildDropdownField(
@@ -999,6 +1021,57 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
                 ),
                 const Icon(
                   Icons.calendar_today,
+                  color: Colors.grey,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineField({
+    required String label,
+    required String? value,
+    required VoidCallback onTap,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F2F5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  value ?? 'Select timeline',
+                  style: TextStyle(
+                    color: value != null ? Colors.black : Colors.grey[600],
+                  ),
+                ),
+                const Icon(
+                  Icons.access_time,
                   color: Colors.grey,
                   size: 20,
                 ),

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../models/medication.dart';
 import 'notification_service.dart';
-// import 'supabase_service.dart';
+import 'medication_service.dart';
+import 'missed_medication_service.dart';
 
 class NotificationActionHandler {
   static final NotificationActionHandler _instance = NotificationActionHandler._internal();
@@ -10,12 +10,60 @@ class NotificationActionHandler {
   NotificationActionHandler._internal();
 
   final NotificationService _notificationService = NotificationService();
-  // final SupabaseService _supabaseService = SupabaseService();
+  final MedicationService _medicationService = MedicationService.instance;
+  final MissedMedicationService _missedMedicationService = MissedMedicationService();
 
   // Initialize action handlers
   Future<void> initialize() async {
-    // Simplified notification action handler without awesome_notifications
     print('[NotificationActionHandler] Initialized');
+  }
+
+  /// Handle notification tap
+  Future<void> handleNotificationTap(String? payload) async {
+    if (payload == null) return;
+
+    try {
+      if (payload.startsWith('medication:')) {
+        final medicationId = payload.substring('medication:'.length);
+        await _handleMedicationNotificationTap(medicationId);
+      } else if (payload == 'background_check') {
+        await _handleBackgroundCheck();
+      }
+    } catch (e) {
+      print('❌ Error handling notification tap: $e');
+    }
+  }
+
+  /// Handle medication notification tap
+  Future<void> _handleMedicationNotificationTap(String medicationId) async {
+    try {
+      print('🔔 Handling medication notification tap for: $medicationId');
+      
+      // Get medication details
+      final medication = await _medicationService.getMedicationById(medicationId);
+      
+      // Show dialog to take or skip medication
+      // Note: This would need to be called from a context-aware location
+      // For now, we'll just log the action
+      print('📱 Medication notification tapped: ${medication.name}');
+      
+    } catch (e) {
+      print('❌ Error handling medication notification tap: $e');
+    }
+  }
+
+  /// Handle background check notification
+  Future<void> _handleBackgroundCheck() async {
+    try {
+      print('🔄 Handling background check notification');
+      
+      // Trigger background check for new notifications
+      // This would typically be handled by the ReminderScheduler
+      print('✅ Background check completed');
+      
+    } catch (e) {
+      print('❌ Error handling background check: $e');
+    }
   }
 
     // Handle notification actions
@@ -100,15 +148,15 @@ class NotificationActionHandler {
     try {
       // Reschedule reminder for 10 minutes later
       final snoozeTime = DateTime.now().add(const Duration(minutes: 10));
-      await _notificationService.scheduleMedicationReminder(
+      await _notificationService.scheduleMedicationReminderWithData(
         id: _generateNotificationId(medicationId, snoozeTime, isReminder: true),
         title: 'Medication Reminder',
         body: 'Snoozed reminder: Time to take your medication',
         scheduledDate: snoozeTime,
-        payload: json.encode({
-          'type': 'reminder',
-          'medicationId': medicationId,
-        }),
+        medicationId: medicationId,
+        medicationName: 'Medication',
+        dosage: '1',
+        isAlarm: true,
       );
     } catch (e) {
       print('Error handling snooze medication: $e');

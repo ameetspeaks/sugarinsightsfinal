@@ -9,7 +9,7 @@ class User {
   final double? height;
   final double? weight;
   final String? diabetesType;
-  final DateTime? diagnosisDate;
+  final String? diagnosisDate;
   final String? uniqueId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -45,9 +45,7 @@ class User {
       height: json['height']?.toDouble(),
       weight: json['weight']?.toDouble(),
       diabetesType: json['diabetes_type'],
-      diagnosisDate: json['diagnosis_date'] != null
-          ? DateTime.parse(json['diagnosis_date'])
-          : null,
+      diagnosisDate: json['diagnosis_date'],
       uniqueId: json['unique_id'],
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
@@ -66,7 +64,7 @@ class User {
       'height': height,
       'weight': weight,
       'diabetes_type': diabetesType,
-      'diagnosis_date': diagnosisDate?.toIso8601String(),
+      'diagnosis_date': diagnosisDate,
       'unique_id': uniqueId,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -82,7 +80,7 @@ class User {
     double? height,
     double? weight,
     String? diabetesType,
-    DateTime? diagnosisDate,
+    String? diagnosisDate,
     String? uniqueId,
   }) {
     return User(

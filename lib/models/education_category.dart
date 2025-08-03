@@ -56,8 +56,8 @@ class EducationCategory {
       'id': id,
       'name': name,
       'icon': icon?.codePoint,
-      'imagePath': imagePath,
-      'iconName': iconName,
+      'image_path': imagePath, // Fixed: use image_path for database
+      'icon_name': iconName, // Fixed: use icon_name for database
       'articleCount': articleCount,
       'blogCount': blogCount,
       'description': description,
@@ -70,7 +70,7 @@ class EducationCategory {
       id: json['id'] as String,
       name: json['name'] as String,
       icon: json['icon'] != null ? IconData(json['icon'] as int, fontFamily: 'MaterialIcons') : null,
-      imagePath: json['imagePath'] as String?,
+      imagePath: json['image_path'] as String?, // Fixed: use image_path from database
       iconName: json['icon_name'] as String?,
       articleCount: json['articleCount'] as int? ?? 0,
       blogCount: json['blogCount'] as int? ?? 0,

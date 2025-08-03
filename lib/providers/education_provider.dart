@@ -21,6 +21,7 @@ class EducationProvider extends ChangeNotifier {
   List<EducationCategory> get categories => _categories;
   Map<String, List<Article>> get articlesByCategory => _articlesByCategory;
   Map<String, List<Video>> get videosByCategory => _videosByCategory;
+  EducationService get educationService => _educationService;
 
   Future<void> loadCategories() async {
     _isLoading = true;

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
 import '../../core/constants/app_colors.dart';
 import '../../models/education_category.dart';
+import '../../services/education_service.dart';
+import '../../providers/education_provider.dart';
+import 'package:provider/provider.dart';
 
 class EducationCategoryCard extends StatelessWidget {
   final EducationCategory category;
@@ -56,27 +60,7 @@ class EducationCategoryCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: category.iconName != null
-                      ? ClipOval(
-                          child: Image.asset(
-                            category.iconName!,
-                            width: 30,
-                            height: 30,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.category,
-                                color: Colors.white,
-                                size: 28,
-                              );
-                            },
-                          ),
-                        )
-                      : Icon(
-                          category.icon ?? Icons.category,
-                          color: Colors.white,
-                          size: 28,
-                        ),
+                  child: _buildCategoryIcon(context),
                 ),
                 const SizedBox(width: 16),
                 // Category Content
@@ -96,15 +80,29 @@ class EducationCategoryCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      // Content Summary (gray subtitle)
-                      Text(
-                        category.contentSummary,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                          fontWeight: FontWeight.w400,
+                      // Description (gray subtitle)
+                      if (category.description != null && category.description!.isNotEmpty)
+                        Text(
+                          category.description!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w400,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        )
+                      else
+                        Text(
+                          category.contentSummary,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w400,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -119,6 +117,77 @@ class EducationCategoryCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildCategoryIcon(BuildContext context) {
+    return FutureBuilder<Uint8List?>(
+      future: _getCategoryIcon(context),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasData && snapshot.data != null) {
+          return ClipOval(
+            child: Image.memory(
+              snapshot.data!,
+              width: 30,
+              height: 30,
+              fit: BoxFit.cover,
+            ),
+          );
+        }
+
+        // Fallback to asset icon
+        if (category.iconName != null && category.iconName!.isNotEmpty) {
+          return ClipOval(
+            child: Image.asset(
+              category.iconName!,
+              width: 30,
+              height: 30,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return _buildFallbackIcon();
+              },
+            ),
+          );
+        }
+
+        // Use fallback icon
+        return _buildFallbackIcon();
+      },
+    );
+  }
+
+  Future<Uint8List?> _getCategoryIcon(BuildContext context) async {
+    try {
+      final educationProvider = Provider.of<EducationProvider>(context, listen: false);
+      final educationService = educationProvider.educationService;
+      
+      return await educationService.getCategoryIcon(category.id, category.imagePath);
+    } catch (e) {
+      print('❌ Error getting category icon: $e');
+      return null;
+    }
+  }
+
+  Widget _buildFallbackIcon() {
+    // Use category icon if available, otherwise use default
+    final iconData = category.icon ?? Icons.category;
+    return Icon(
+      iconData,
+      color: Colors.white,
+      size: 28,
     );
   }
 } 

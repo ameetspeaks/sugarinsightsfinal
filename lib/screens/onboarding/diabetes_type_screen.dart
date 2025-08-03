@@ -17,8 +17,8 @@ class _DiabetesTypeScreenState extends State<DiabetesTypeScreen> {
     'Type 1',
     'Type 2',
     'Prediabetes',
+    'Gestational',
     'Other',
-    'None',
   ];
 
   Widget _buildSelectionCard(String type) {
@@ -79,14 +79,17 @@ class _DiabetesTypeScreenState extends State<DiabetesTypeScreen> {
         case 'prediabetes':
           diabetesType = 'pre_diabetic';
           break;
-        case 'type 1 diabetes':
+        case 'type 1':
           diabetesType = 'type_1';
           break;
-        case 'type 2 diabetes':
+        case 'type 2':
           diabetesType = 'type_2';
           break;
-        case 'gestational diabetes':
+        case 'gestational':
           diabetesType = 'gestational';
+          break;
+        case 'other':
+          diabetesType = 'other';
           break;
         default:
           diabetesType = 'other';

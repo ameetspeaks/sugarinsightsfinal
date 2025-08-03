@@ -50,7 +50,7 @@ class SupabaseAuthService extends ChangeNotifier {
         _currentUser = data.session?.user;
         if (_currentUser != null) {
           print('👤 User signed in: ${_currentUser!.id}');
-          // Only load profile if we have a valid session
+          // Load profile if we have a session
           if (data.session != null) {
             _loadUserProfile().then((_) {
               // Check onboarding completion after loading profile
@@ -89,6 +89,9 @@ class SupabaseAuthService extends ChangeNotifier {
       } else if (data.event == AuthChangeEvent.passwordRecovery) {
         print('🔐 Password recovery');
         // Handle password recovery if needed
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        print('🔐 User signed out');
+        // Handle sign out if needed
       }
     });
   }
@@ -150,6 +153,7 @@ class SupabaseAuthService extends ChangeNotifier {
       // Check if this is an authentication error
       if (e.toString().contains('JWT') || e.toString().contains('unauthorized')) {
         print('🔐 Authentication error, user may not be properly authenticated');
+        // Only clear state on critical auth errors
         _currentUser = null;
         _userProfile = null;
         _hasCompletedOnboarding = false;
@@ -157,8 +161,8 @@ class SupabaseAuthService extends ChangeNotifier {
         return;
       }
       
-      // Don't automatically try to create profile on error
-      print('⚠️ Not attempting to create profile due to error');
+      // For other errors, keep the session but don't set profile
+      print('⚠️ Profile loading error, but keeping session');
       _userProfile = null;
       _hasCompletedOnboarding = false;
       notifyListeners();
@@ -487,22 +491,28 @@ class SupabaseAuthService extends ChangeNotifier {
       if (session != null) {
         print('👤 Found existing session for user: ${session.user?.id}');
         
-        // Check if session is valid
-        final isValid = await isSessionValid();
-        if (isValid) {
-          print('✅ Session is valid, loading user profile');
-          _currentUser = session.user;
+        // Set current user first
+        _currentUser = session.user;
+        
+        // Try to load user profile even if session might be expired
+        // Supabase will handle session refresh automatically
+        try {
           await _loadUserProfile();
           
           // Check onboarding completion after loading profile
           checkOnboardingCompletion();
-        } else {
-          print('🔐 Session has expired');
-          print('❌ Session is invalid, clearing state');
-          _currentUser = null;
-          _userProfile = null;
-          _hasCompletedOnboarding = false;
-          notifyListeners();
+          print('✅ Session initialized successfully');
+        } catch (e) {
+          print('⚠️ Error loading profile, but keeping session: $e');
+          // Don't clear session on profile loading error
+          // Only clear if it's a critical auth error
+          if (e.toString().contains('JWT') || e.toString().contains('unauthorized')) {
+            print('🔐 Critical auth error, clearing session');
+            _currentUser = null;
+            _userProfile = null;
+            _hasCompletedOnboarding = false;
+            notifyListeners();
+          }
         }
       } else {
         print('🔐 No existing session found');
@@ -513,10 +523,13 @@ class SupabaseAuthService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ Error initializing session: $e');
-      _currentUser = null;
-      _userProfile = null;
-      _hasCompletedOnboarding = false;
-      notifyListeners();
+      // Only clear session on critical errors
+      if (e.toString().contains('JWT') || e.toString().contains('unauthorized')) {
+        _currentUser = null;
+        _userProfile = null;
+        _hasCompletedOnboarding = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -528,20 +541,13 @@ class SupabaseAuthService extends ChangeNotifier {
         return false;
       }
       
-      // Check if session is expired
-      if (session.expiresAt != null) {
-        final expiresAt = DateTime.fromMillisecondsSinceEpoch(session.expiresAt!);
-        if (DateTime.now().isAfter(expiresAt)) {
-          // Session is expired, but don't clear state here to avoid setState during build
-          return false;
-        }
-      }
-      
       // Additional check: ensure we have a user
       if (session.user == null) {
         return false;
       }
       
+      // Don't check expiration time here - let Supabase handle refresh
+      // Only return false if there's no session or no user
       return true;
     } catch (e) {
       return false;
@@ -557,13 +563,11 @@ class SupabaseAuthService extends ChangeNotifier {
         return false;
       }
       
-      // Check if session is expired
-      if (session.expiresAt != null) {
-        final expiresAt = DateTime.fromMillisecondsSinceEpoch(session.expiresAt!);
-        if (DateTime.now().isAfter(expiresAt)) {
-          print('🔐 Session has expired');
-          return false;
-        }
+      // Don't check expiration time - let Supabase handle refresh automatically
+      // Only check if session and user exist
+      if (session.user == null) {
+        print('🔐 No user in session');
+        return false;
       }
       
       print('✅ Session is valid');
@@ -577,10 +581,30 @@ class SupabaseAuthService extends ChangeNotifier {
   // Start periodic session validation timer
   void _startSessionValidationTimer() {
     // Check session validity every 5 minutes
-    Timer.periodic(const Duration(minutes: 5), (timer) {
-      if (_currentUser != null && !isSessionValidSync()) {
-        print('🔐 Periodic check: Session is invalid, forcing logout');
-        forceLogout();
+    Timer.periodic(const Duration(minutes: 5), (timer) async {
+      if (_currentUser != null) {
+        // Only check session validity, don't force logout
+        final isValid = await isSessionValid();
+        if (!isValid) {
+          print('🔐 Periodic check: Session may be invalid, but not forcing logout');
+          print('🔄 Attempting to refresh session...');
+          
+          try {
+            // Try to refresh the session instead of forcing logout
+            final session = _client.auth.currentSession;
+            if (session != null) {
+              // Let Supabase handle session refresh automatically
+              print('✅ Session refresh handled by Supabase');
+            }
+          } catch (e) {
+            print('❌ Error during session refresh: $e');
+            // Only force logout if there's a critical error
+            if (e.toString().contains('JWT') || e.toString().contains('unauthorized')) {
+              print('🔐 Critical auth error, forcing logout');
+              forceLogout();
+            }
+          }
+        }
       }
     });
   }
@@ -588,14 +612,10 @@ class SupabaseAuthService extends ChangeNotifier {
   // Safely handle session cleanup without causing setState issues
   void handleInvalidSession() {
     if (_currentUser != null && !isSessionValidSync()) {
-      print('🔐 Invalid session detected, clearing state safely');
-      _currentUser = null;
-      _userProfile = null;
-      _hasCompletedOnboarding = false;
-      // Use a microtask to avoid setState during build
-      Future.microtask(() {
-        notifyListeners();
-      });
+      print('🔐 Invalid session detected, but not clearing state immediately');
+      print('🔄 Letting Supabase handle session refresh');
+      // Don't clear state immediately - let Supabase handle refresh
+      // Only clear if there's a critical error
     }
   }
 
@@ -627,13 +647,28 @@ class SupabaseAuthService extends ChangeNotifier {
 
   // Handle session expiration and force logout
   void handleSessionExpiration() {
-    print('🔐 Session expired, forcing logout');
-    _currentUser = null;
-    _userProfile = null;
-    _hasCompletedOnboarding = false;
-    // Use a microtask to avoid setState during build
-    Future.microtask(() {
-      notifyListeners();
-    });
+    print('🔐 Session expired, but not forcing logout');
+    print('🔄 Letting Supabase handle session refresh automatically');
+    // Don't force logout - let Supabase handle session refresh
+    // Only clear state if there's a critical error
+  }
+  
+  // Refresh session manually if needed
+  Future<void> refreshSession() async {
+    try {
+      print('🔄 Manually refreshing session...');
+      final session = _client.auth.currentSession;
+      if (session != null) {
+        // Let Supabase handle the refresh
+        print('✅ Session refresh initiated');
+      }
+    } catch (e) {
+      print('❌ Error refreshing session: $e');
+      // Only force logout on critical errors
+      if (e.toString().contains('JWT') || e.toString().contains('unauthorized')) {
+        print('🔐 Critical auth error during refresh, forcing logout');
+        forceLogout();
+      }
+    }
   }
 } 

@@ -26,7 +26,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   @override
   void initState() {
     super.initState();
-    _medicationService = MedicationService(Supabase.instance.client);
+    _medicationService = MedicationService.instance;
     _loadMedications();
     _testDatabaseConnection();
   }
@@ -315,8 +315,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
       );
     }
 
-    // Group medications by status - only show today's upcoming medications
-    final upcomingMedicationCards = <Widget>[];
+    // Group medications by status - show today's pending medications
+    final pendingMedicationCards = <Widget>[];
     
     for (final medData in _todayMedications) {
       if (medData['status'] == 'pending') {
@@ -335,23 +335,21 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         print('⏰ Debug: ${medData['medication_name']} - Scheduled: $scheduledTime, Now: ${now.hour}:${now.minute}, Scheduled DateTime: ${scheduledDateTime.hour}:${scheduledDateTime.minute}');
         print('⏰ Debug: Is after now? ${scheduledDateTime.isAfter(now)}');
         
-        // Only include if it's today and the time hasn't passed yet
-        if (scheduledDateTime.isAfter(now)) {
-          final medication = _findMedicationById(medData['medication_id']);
-          if (medication != null) {
-            // Create a card for this specific scheduled time
-            upcomingMedicationCards.add(_buildMedicationCard(
-              medication: medication,
-              isUpcoming: true,
-              scheduledTime: scheduledDateTime,
-              onMarkAsTaken: () => _markMedicationAsTaken(medication),
-            ));
-          }
+        // Include all pending medications for today (both past and future times)
+        final medication = _findMedicationById(medData['medication_id']);
+        if (medication != null) {
+          // Create a card for this specific scheduled time
+          pendingMedicationCards.add(_buildMedicationCard(
+            medication: medication,
+            isUpcoming: true,
+            scheduledTime: scheduledDateTime,
+            onMarkAsTaken: () => _markMedicationAsTaken(medication),
+          ));
         }
       }
     }
 
-    print('⏰ Upcoming medication cards: ${upcomingMedicationCards.length}');
+    print('⏰ Pending medication cards: ${pendingMedicationCards.length}');
     
     // Debug: Print each today medication and its status
     for (int i = 0; i < _todayMedications.length; i++) {
@@ -389,10 +387,10 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Upcoming Section
-                if (upcomingMedicationCards.isNotEmpty) ...[
+                // Pending Section
+                if (pendingMedicationCards.isNotEmpty) ...[
                   const Text(
-                    'Upcoming',
+                    'Pending',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -400,7 +398,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  ...upcomingMedicationCards,
+                  ...pendingMedicationCards,
                   const SizedBox(height: 24),
                 ],
 
